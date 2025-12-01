@@ -9,39 +9,58 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
 import com.example.invex.ui.theme.InvexTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
-            InvexTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
-            }
+            InvexApp()
         }
     }
 }
-
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
+fun InvexApp() {
+    val navController = rememberNavController()
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    InvexTheme {
-        Greeting("Android")
+    val bottomBarScreens = listOf("home","managers", "warehouses", "companies", "deals")
+
+    Scaffold(
+        bottomBar = {
+            if (currentRoute in bottomBarScreens) {
+                BottomNavBar(navController)
+            }
+        },
+        containerColor = Color(0xFFF5F5F5)
+    ) { paddingValues ->
+
+        NavHost(
+            navController = navController,
+            startDestination = "companies",
+            modifier = Modifier.padding(paddingValues)
+        ) {
+            composable("Onboarding") { OnboardingScreen(navController) }
+            composable("login") { LoginScreen(navController) }
+            composable("home") { HomeScreenContent(navController) }
+            composable("managers") { ManagersScreen(navController) }
+            composable("warehouses") { WarehousesScreen(navController) }
+            composable("companies") { CompaniesScreen(navController) }
+            composable("deals") {  }
+
+            composable("warehouseDetails/{warehouseName}") { backStackEntry ->
+                val warehouseName = backStackEntry.arguments?.getString("warehouseName") ?: ""
+                WarehouseDetailsScreen(warehouseName, navController)
+            }
+        }
     }
 }
