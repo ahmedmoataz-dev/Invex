@@ -6,7 +6,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -14,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,32 +25,30 @@ import androidx.compose.ui.draw.shadow
 import androidx.navigation.NavHostController
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.foundation.ExperimentalFoundationApi
-
-val PrimaryColor = Color(0xFF243D64)
-val SecondaryColor = Color(0xFF6C7A89)
-val BackgroundColor = Color(0xFFF5F5F5)
+import androidx.compose.foundation.lazy.items
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreenContent(
     navController: NavHostController,
-    viewModel: HomeViewModel = viewModel()
+    homeViewModel: HomeViewModel = viewModel(),
+    dealsViewModel: DealsViewModel = viewModel()
 ) {
 
-    val shortcuts = viewModel.shortcuts
-    val recentDealsList = viewModel.recentDealsList
+    val shortcuts = homeViewModel.shortcuts
+    val dealsList = dealsViewModel.dealsList // هنا نستخدم DealDetail مباشرة
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundColor)
+            .background(Color(0xFFF5F5F5))
             .padding(20.dp)
     ) {
         Text(
             text = "Invex",
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
-            color = PrimaryColor,
+            color = Color(0xFF243D64),
             modifier = Modifier.align(Alignment.CenterHorizontally)
         )
 
@@ -60,7 +58,7 @@ fun HomeScreenContent(
             text = "Shortcuts",
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
-            color = PrimaryColor
+            color = Color(0xFF243D64)
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -81,21 +79,9 @@ fun HomeScreenContent(
                     onClick = {
                         when (shortcut.title) {
                             "Items" -> navController.navigate("items")
-                            "Warehouses" -> navController.navigate("warehouses") {
-                                launchSingleTop = true
-                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                restoreState = true
-                            }
-                            "Companies" -> navController.navigate("companies"){
-                                launchSingleTop = true
-                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                restoreState = true
-                            }
-                            "Warehouse Managers" -> navController.navigate("managers"){
-                                launchSingleTop = true
-                                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                restoreState = true
-                            }
+                            "Warehouses" -> navController.navigate("warehouses")
+                            "Companies" -> navController.navigate("companies")
+                            "Warehouse Managers" -> navController.navigate("warehousesManagers")
                         }
                     }
                 )
@@ -108,7 +94,7 @@ fun HomeScreenContent(
             text = "Recent Deals",
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
-            color = PrimaryColor
+            color = Color(0xFF243D64)
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -117,8 +103,11 @@ fun HomeScreenContent(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            items(recentDealsList) { deal ->
-                RecentDealCard(deal.company, deal.cost, deal.date)
+            items(dealsViewModel.filteredList) { deal ->
+                val detail = dealsViewModel.getDealDetail(deal.company)
+                if (detail != null) {
+                    DealCard(detail, navController)
+                }
             }
         }
     }
@@ -131,7 +120,7 @@ fun ShortcutCard(icon: Int, title: String, subtitle: String, onClick: () -> Unit
             .height(110.dp)
             .shadow(6.dp, RoundedCornerShape(16.dp))
             .background(Color.White, RoundedCornerShape(16.dp))
-            .border(BorderStroke(1.dp, PrimaryColor.copy(alpha = 0.2f)), RoundedCornerShape(16.dp))
+            .border(BorderStroke(1.dp, Color(0xFF243D64).copy(alpha = 0.2f)), RoundedCornerShape(16.dp))
             .padding(16.dp)
             .clickable { onClick() },
         verticalArrangement = Arrangement.SpaceBetween
@@ -147,49 +136,67 @@ fun ShortcutCard(icon: Int, title: String, subtitle: String, onClick: () -> Unit
                 text = title,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
-                color = PrimaryColor
+                color = Color(0xFF243D64)
             )
             Text(
                 text = subtitle,
                 fontSize = 13.sp,
-                color = SecondaryColor
+                color = Color(0xFF6C7A89)
             )
         }
     }
 }
-
 @Composable
-fun RecentDealCard(company: String, cost: String, date: String) {
+fun DealCardHome(dealDetail: DealDetail, navController: NavHostController) {
+    val totalPrice = dealDetail.products.sumOf { product ->
+        val price = product.pricePerUnit.replace("$", "").toDoubleOrNull() ?: 0.0
+        price * product.quantity
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(8.dp, RoundedCornerShape(20.dp))
-            .background(Color.White, RoundedCornerShape(20.dp))
-            .border(BorderStroke(1.dp, PrimaryColor.copy(alpha = 0.2f)), RoundedCornerShape(20.dp))
-            .padding(18.dp)
+            .shadow(4.dp, RoundedCornerShape(16.dp))
+            .background(Color.White, RoundedCornerShape(16.dp))
+            .border(BorderStroke(1.dp, Color(0xFF243D64).copy(alpha = 0.2f)), RoundedCornerShape(16.dp))
+            .padding(16.dp)
+            .clickable {
+                navController.navigate("dealDetails/${dealDetail.company}")
+            },
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-
             Text(
-                text = "Associated Item",
-                fontSize = 13.sp,
-                color = SecondaryColor
+                text = dealDetail.type,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF243D64)
             )
-
             Text(
-                text = company,
+                text = dealDetail.company,
                 fontWeight = FontWeight.Bold,
-                fontSize = 17.sp,
-                color = PrimaryColor
+                fontSize = 16.sp,
+                color = Color(0xFF243D64)
             )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
             Text(
-                text = "Cost: $cost   |   Date: $date",
+                text = dealDetail.date,
                 fontSize = 14.sp,
-                color = SecondaryColor.copy(alpha = 0.7f)
+                color = Color(0xFF6C7A89)
             )
+            // Show vendor only if Export
+            if (dealDetail.type.equals("Export", ignoreCase = true)) {
+                Text(
+                    text = "Vendor: ${dealDetail.vendor}",
+                    fontSize = 14.sp,
+                    color = Color(0xFF6C7A89)
+                )
+            }
         }
+
+        Text(
+            text = "$${"%.2f".format(totalPrice)}",
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp,
+            color = Color(0xFF243D64)
+        )
     }
 }

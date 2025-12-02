@@ -23,7 +23,6 @@ class LoginViewModel : ViewModel() {
 /***********************************
  *            HOME VIEWMODEL
  ***********************************/
-data class Deal(val company: String, val cost: String, val date: String)
 data class Shortcut(val icon: Int, val title: String, val subtitle: String)
 
 class HomeViewModel : ViewModel() {
@@ -34,15 +33,6 @@ class HomeViewModel : ViewModel() {
             Shortcut(R.drawable.ic_warehouses, "Warehouses", "Manage your warehouses"),
             Shortcut(R.drawable.ic_companies, "Companies", "View your companies"),
             Shortcut(R.drawable.ic_managers, "Warehouse Managers", "See warehouse managers")
-        )
-    )
-        private set
-
-    var recentDealsList by mutableStateOf(
-        listOf(
-            Deal("Company A", "$1500", "2024-07-26"),
-            Deal("Company B", "$2200", "2024-07-25"),
-            Deal("Company C", "$800", "2024-07-24")
         )
     )
         private set
@@ -216,8 +206,10 @@ class ManagersViewModel : ViewModel() {
         managersList = managersList + manager
     }
 }
-// جزء الشركااات
-// Data Class للشركة
+
+/***********************************
+ *      COMPANIES VIEWMODEL
+ ***********************************/
 data class Company(
     val id: String,
     val name: String,
@@ -232,27 +224,21 @@ data class Company(
 
 class CompaniesViewModel : ViewModel() {
 
-    // القائمة الكاملة لكل الشركات
     var companiesList = mutableStateListOf<Company>()
         private set
 
-    // النوع المختار حاليا
     var selectedType = mutableStateOf("Supplier")
         private set
 
-    // قيمة البحث
     var searchQuery = mutableStateOf("")
 
-    // أنواع الشركات
     val companyTypes = listOf("Supplier", "Exporter")
 
-    // رسالة خطأ عند إضافة شركة
     var errorMessage by mutableStateOf("")
 
-    // حالة عرض الديالوج
     var showAddDialog by mutableStateOf(false)
+        private set
 
-    // قائمة مفلترة حسب النوع والبحث
     val filteredList: List<Company>
         get() = companiesList.filter { company ->
             (company.type == selectedType.value) &&
@@ -261,22 +247,14 @@ class CompaniesViewModel : ViewModel() {
                             || company.governorate.contains(searchQuery.value, ignoreCase = true))
         }
 
-    // تحديث النوع المختار
     fun updateSelectedType(type: String) {
         selectedType.value = type
     }
 
-    // تحديث قيمة البحث
     fun updateSearchQuery(query: String) {
         searchQuery.value = query
     }
 
-    // إضافة شركة جديدة
-    fun addCompany(company: Company) {
-        companiesList.add(company)
-    }
-
-    // فتح/إغلاق الديالوج
     fun openAddDialog() {
         showAddDialog = true
         errorMessage = ""
@@ -287,7 +265,40 @@ class CompaniesViewModel : ViewModel() {
         errorMessage = ""
     }
 
-    // مثال على شركات جاهزة عند بداية التطبيق
+    fun addCompany(
+        name: String,
+        governorate: String,
+        city: String,
+        street: String,
+        phone: String,
+        email: String,
+        type: String,
+        licenseNumber: String
+    ) {
+        if (
+            name.isBlank() || governorate.isBlank() || city.isBlank() ||
+            street.isBlank() || phone.isBlank() || email.isBlank() || licenseNumber.isBlank()
+        ) {
+            errorMessage = "Please fill all fields!"
+            return
+        }
+
+        val newCompany = Company(
+            id = (companiesList.size + 1).toString(),
+            name = name,
+            governorate = governorate,
+            city = city,
+            street = street,
+            phone = phone,
+            email = email,
+            type = type,
+            licenseNumber = licenseNumber
+        )
+
+        companiesList.add(newCompany)
+        closeAddDialog()
+    }
+
     init {
         companiesList.addAll(
             listOf(
@@ -315,5 +326,147 @@ class CompaniesViewModel : ViewModel() {
                 )
             )
         )
+    }
+}
+
+/***********************************
+ *      WAREHOUSES MANAGERS VIEWMODEL
+ ***********************************/
+data class WarehouseManagerInfo(
+    val managerName: String,
+    val warehouseName: String,
+    val warehouseLocation: String
+)
+
+class WarehousesManagersViewModel(
+    private val warehousesViewModel: WarehousesViewModel
+) : ViewModel() {
+
+    var searchQuery by mutableStateOf("")
+        private set
+
+    val warehouseManagersList: List<WarehouseManagerInfo>
+        get() = warehousesViewModel.warehousesList.map { warehouse ->
+            WarehouseManagerInfo(
+                managerName = warehouse.managerName,
+                warehouseName = warehouse.name,
+                warehouseLocation = warehouse.location
+            )
+        }.filter {
+            it.managerName.contains(searchQuery, ignoreCase = true) ||
+                    it.warehouseName.contains(searchQuery, ignoreCase = true) ||
+                    it.warehouseLocation.contains(searchQuery, ignoreCase = true)
+        }
+
+    fun updateSearchQuery(query: String) {
+        searchQuery = query
+    }
+}
+/***********************************
+ *      DEALS VIEWMODEL
+ ***********************************/
+data class Deal(
+    val type: String, // Import / Export
+    val company: String,
+    val date: String,
+    val cost: String
+)
+
+data class DealProduct(
+    val category: String,
+    val name: String,
+    val quantity: Int,
+    val pricePerUnit: String
+)
+
+data class DealDetail(
+    val type: String, // Import / Export
+    val company: String,
+    val date: String,
+    val warehouseName: String,
+    val warehouseLocation: String,
+    val vendor: String,
+    val products: List<DealProduct>
+)
+
+class DealsViewModel : ViewModel() {
+
+    private val dealDetailsMap = mutableMapOf<String, DealDetail>(
+        "Company A" to DealDetail(
+            type = "Import",
+            company = "Company A",
+            date = "2025-12-01",
+            warehouseName = "Warehouse A",
+            warehouseLocation = "Cairo, Downtown",
+            vendor = "Ahmed Vendor",
+            products = listOf(
+                DealProduct("Electronics", "Laptop", 5, "$1200"),
+                DealProduct("Electronics", "Mouse", 10, "$25"),
+                DealProduct("Furniture", "Chair", 20, "$75")
+            )
+        ),
+        "Company B" to DealDetail(
+            type = "Export",
+            company = "Company B",
+            date = "2025-11-30",
+            warehouseName = "Warehouse B",
+            warehouseLocation = "Alexandria, Smouha",
+            vendor = "Sara Vendor",
+            products = listOf(
+                DealProduct("Electronics", "Monitor", 3, "$300"),
+                DealProduct("Furniture", "Table", 5, "$150")
+            )
+        )
+    )
+
+    var dealsList by mutableStateOf(
+        dealDetailsMap.values.map { d ->
+            Deal(
+                d.type,
+                d.company,
+                d.date,
+                d.products.sumOf { p ->
+                    val price = p.pricePerUnit.replace("$", "").toDoubleOrNull() ?: 0.0
+                    price * p.quantity
+                }.let { "$$it" }
+            )
+        }
+    )
+        private set
+
+    var searchQuery by mutableStateOf("")
+        private set
+
+    val filteredList: List<Deal>
+        get() = dealsList.filter {
+            it.type.contains(searchQuery, ignoreCase = true) ||
+                    it.company.contains(searchQuery, ignoreCase = true) ||
+                    it.date.contains(searchQuery, ignoreCase = true)
+        }
+
+    fun updateSearchQuery(query: String) {
+        searchQuery = query
+    }
+
+    fun addDeal(deal: Deal) {
+        dealsList = dealsList + deal
+    }
+
+    fun getDealDetail(company: String): DealDetail? {
+        return dealDetailsMap[company]
+    }
+}
+
+/***********************************
+ *      DEAL DETAILS VIEWMODEL
+ ***********************************/
+class DealDetailsViewModel : ViewModel() {
+
+    var dealDetail by mutableStateOf<DealDetail?>(null)
+        private set
+
+    // Load deal detail based on company name
+    fun loadDealDetail(companyName: String, dealsViewModel: DealsViewModel) {
+        dealDetail = dealsViewModel.getDealDetail(companyName)
     }
 }

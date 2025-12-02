@@ -9,14 +9,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -25,9 +29,8 @@ import androidx.navigation.NavHostController
 @Composable
 fun CompaniesScreen(navController: NavHostController) {
     val viewModel: CompaniesViewModel = viewModel()
-    var showAddDialog by remember { mutableStateOf(false) }
 
-    // خريطة حالة التوسيع للكاردات
+    // لتخزين حالات الـ Expand لكل Card
     var expandedStates by remember { mutableStateOf(mapOf<String, Boolean>()) }
 
     Column(
@@ -51,7 +54,7 @@ fun CompaniesScreen(navController: NavHostController) {
             )
 
             IconButton(
-                onClick = { showAddDialog = true },
+                onClick = { viewModel.openAddDialog() },
                 modifier = Modifier.size(60.dp)
             ) {
                 Icon(
@@ -70,12 +73,8 @@ fun CompaniesScreen(navController: NavHostController) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            TypeButton("Supplier", viewModel) {
-                expandedStates = mapOf() // إعادة تعيين حالة الكارد عند تغيير النوع
-            }
-            TypeButton("Exporter", viewModel) {
-                expandedStates = mapOf()
-            }
+            TypeButton("Supplier", viewModel) { expandedStates = mapOf() }
+            TypeButton("Exporter", viewModel) { expandedStates = mapOf() }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -118,10 +117,9 @@ fun CompaniesScreen(navController: NavHostController) {
         }
     }
 
-    if (showAddDialog) {
+    if (viewModel.showAddDialog) {
         AddCompanyDialog(
-            viewModel = viewModel,
-            onDismiss = { showAddDialog = false }
+            viewModel = viewModel
         )
     }
 }
@@ -173,8 +171,10 @@ fun CompanyCard(
         }
     }
 }
+
 @Composable
-fun AddCompanyDialog(viewModel: CompaniesViewModel, onDismiss: () -> Unit) {
+fun AddCompanyDialog(viewModel: CompaniesViewModel) {
+
     var name by remember { mutableStateOf("") }
     var governorate by remember { mutableStateOf("") }
     var city by remember { mutableStateOf("") }
@@ -183,104 +183,131 @@ fun AddCompanyDialog(viewModel: CompaniesViewModel, onDismiss: () -> Unit) {
     var email by remember { mutableStateOf("") }
     var licenseNumber by remember { mutableStateOf("") }
     var type by remember { mutableStateOf(viewModel.selectedType.value) }
-    var errorMessage by remember { mutableStateOf("") }
 
-    // Data class صغيرة لتمثيل الحقول
-    data class FieldState(
-        val label: String,
-        val value: String,
-        val onValueChange: (String) -> Unit
-    )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x88000000))
+            .pointerInput(Unit) {},
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .width(450.dp)
+                .shadow(8.dp, RoundedCornerShape(16.dp))
+                .background(Color.White, RoundedCornerShape(16.dp))
+                .padding(24.dp)
+        ) {
+            Text(
+                text = "Add New Company",
+                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp,
+                color = Color(0xFF243D64)
+            )
 
-    AlertDialog(
-        onDismissRequest = { onDismiss() },
-        title = { Text("Add Company", fontWeight = FontWeight.Bold, color = Color(0xFF243D64)) },
-        text = {
-            Column {
-                // تعريف الحقول
-                val fields = listOf(
-                    FieldState("Company Name", name) { name = it },
-                    FieldState("Governorate", governorate) { governorate = it },
-                    FieldState("City", city) { city = it },
-                    FieldState("Street", street) { street = it },
-                    FieldState("Phone", phone) { phone = it },
-                    FieldState("Email", email) { email = it },
-                    FieldState("License Number", licenseNumber) { licenseNumber = it }
-                )
+            Spacer(modifier = Modifier.height(16.dp))
 
-                // عرض الحقول
-                fields.forEach { field ->
-                    TextField(
-                        value = field.value,
-                        onValueChange = field.onValueChange,
-                        label = { Text(field.label, color = Color(0xFF243D64)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
+            CompanyInputField("Company Name", name,{ name = it })
+            Spacer(modifier = Modifier.height(8.dp))
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text("Company Type", fontWeight = FontWeight.Medium, color = Color(0xFF243D64))
-                Row {
-                    viewModel.companyTypes.forEach { t ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(end = 16.dp)
-                        ) {
-                            RadioButton(
-                                selected = type == t,
-                                onClick = { type = t },
-                                colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF243D64))
-                            )
-                            Text(t, color = Color(0xFF243D64))
-                        }
-                    }
-                }
-
-                if (errorMessage.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(errorMessage, color = Color.Red)
-                }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CompanyInputField("Governorate", governorate, { governorate = it }, modifier = Modifier.weight(1f))
+                CompanyInputField("City", city, { city = it }, modifier = Modifier.weight(1f))
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (name.isBlank() || governorate.isBlank() || city.isBlank() || street.isBlank() ||
-                        phone.isBlank() || email.isBlank() || licenseNumber.isBlank()
+
+            Spacer(modifier = Modifier.height(8.dp))
+            CompanyInputField("Street", street,{ street = it })
+            Spacer(modifier = Modifier.height(8.dp))
+            CompanyInputField("Phone", phone,{ phone = it })
+            Spacer(modifier = Modifier.height(8.dp))
+            CompanyInputField("Email", email,{ email = it })
+            Spacer(modifier = Modifier.height(8.dp))
+            CompanyInputField("License Number", licenseNumber,{ licenseNumber = it })
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text("Company Type", fontWeight = FontWeight.Medium, color = Color(0xFF243D64))
+            Row(modifier = Modifier.padding(vertical = 4.dp)) {
+                viewModel.companyTypes.forEach { t ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(end = 16.dp)
                     ) {
-                        errorMessage = "Please fill all fields!"
-                    } else {
-                        viewModel.addCompany(
-                            Company(
-                                id = (viewModel.companiesList.size + 1).toString(),
-                                name = name,
-                                governorate = governorate,
-                                city = city,
-                                street = street,
-                                phone = phone,
-                                email = email,
-                                type = type,
-                                licenseNumber = licenseNumber
-                            )
+                        RadioButton(
+                            selected = type == t,
+                            onClick = { type = t },
+                            colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF243D64))
                         )
-                        onDismiss()
+                        Text(t, color = Color(0xFF243D64))
                     }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF243D64))
-            ) {
-                Text("Add", color = Color.White)
+                }
             }
-        },
-        dismissButton = {
-            Button(
-                onClick = { onDismiss() },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
+
+            // Error message
+            if (viewModel.errorMessage.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(viewModel.errorMessage, color = Color.Red, fontSize = 14.sp)
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
             ) {
-                Text("Cancel", color = Color.White)
+                TextButton(onClick = { viewModel.closeAddDialog() }) {
+                    Text("Cancel", color = Color(0xFF6C7A89))
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Button(
+                    onClick = {
+                        viewModel.addCompany(
+                            name,
+                            governorate,
+                            city,
+                            street,
+                            phone,
+                            email,
+                            type,
+                            licenseNumber
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF243D64))
+                ) {
+                    Text("Save", color = Color.White)
+                }
             }
         }
-    )
+    }
+}
+@Composable
+fun CompanyInputField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFF243D64))
+        Spacer(modifier = Modifier.height(4.dp))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFFF0F0F0))
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        )
+    }
 }

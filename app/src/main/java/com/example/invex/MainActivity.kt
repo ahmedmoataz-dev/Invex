@@ -46,7 +46,7 @@ fun InvexApp() {
 
         NavHost(
             navController = navController,
-            startDestination = "companies",
+            startDestination = "home",
             modifier = Modifier.padding(paddingValues)
         ) {
             composable("Onboarding") { OnboardingScreen(navController) }
@@ -55,7 +55,12 @@ fun InvexApp() {
             composable("managers") { ManagersScreen(navController) }
             composable("warehouses") { WarehousesScreen(navController) }
             composable("companies") { CompaniesScreen(navController) }
-            composable("deals") {  }
+            composable("deals") { DealsScreen(navController) }
+            composable("dealDetails/{dealCompany}") { backStackEntry ->
+                val dealCompany = backStackEntry.arguments?.getString("dealCompany") ?: ""
+                DealDetailsScreen(navController, dealCompany)
+            }
+            composable("warehousesManagers"){WarehousesManagersScreen(navController)}
 
             composable("warehouseDetails/{warehouseName}") { backStackEntry ->
                 val warehouseName = backStackEntry.arguments?.getString("warehouseName") ?: ""
