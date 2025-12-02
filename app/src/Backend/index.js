@@ -21,7 +21,27 @@ const config = {
 db.connect(config);
 
 app.get('/api/warehouse/', async (req, res) => {
-    const data = await db.query('SELECT INVENTORY.Inv_Name, INVENTORY.Governorate, INVENTORY.City, INVENTORY.Responsible, INVENTORY.Capacity, SUM(ITEM.Item_Quantity) AS Total_Quantity FROM INVENTORY JOIN INV_CAT ON INVENTORY.Inv_ID = INV_CAT.Inv_ID JOIN CATEGORY ON CATEGORY.Cat_ID = INV_CAT.Cat_ID JOIN ITEM ON ITEM.Cat_ID = CATEGORY.Cat_ID GROUP BY INVENTORY.Inv_ID');
+    const data = await db.query(`SELECT 
+                                    INVENTORY.Inv_Name, 
+                                    INVENTORY.Governorate, 
+                                    INVENTORY.City, 
+                                    INVENTORY.Responsible, 
+                                    INVENTORY.Capacity, 
+                                    SUM(ITEM.Item_Quantity) AS Total_Quantity 
+                                FROM INVENTORY 
+                                JOIN INV_CAT 
+                                    ON INVENTORY.Inv_ID = INV_CAT.Inv_ID 
+                                JOIN CATEGORY 
+                                    ON CATEGORY.Cat_ID = INV_CAT.Cat_ID 
+                                JOIN ITEM 
+                                    ON ITEM.Cat_ID = CATEGORY.Cat_ID 
+                                GROUP BY 
+                                    INVENTORY.Inv_ID, 
+                                    INVENTORY.Inv_Name, 
+                                    INVENTORY.Governorate, 
+                                    INVENTORY.City, 
+                                    INVENTORY.Responsible, 
+                                    INVENTORY.Capacity`);
     if(data.recordset == []){
         return res.status(404).json({msg: "There is no warehouses yet"});
     }
@@ -78,6 +98,53 @@ app.post('/api/warehouse/', [
                             capacity: capacity, 
                             responsible: responsible
     });
+});
+
+app.get('/api/warehouse/:ware_name', async (req, res) => {
+    const ware_name = req.params.ware_name;
+    const data1 = await db.query(`SELECT 
+                                    INVENTORY.Inv_Name, 
+                                    INVENTORY.Governorate, 
+                                    INVENTORY.City, 
+                                    INVENTORY.Responsible, 
+                                    INVENTORY.Capacity, 
+                                    SUM(ITEM.Item_Quantity) AS Total_Quantity 
+                                FROM INVENTORY 
+                                JOIN INV_CAT 
+                                    ON INVENTORY.Inv_ID = INV_CAT.Inv_ID 
+                                JOIN CATEGORY 
+                                    ON CATEGORY.Cat_ID = INV_CAT.Cat_ID 
+                                JOIN ITEM 
+                                    ON ITEM.Cat_ID = CATEGORY.Cat_ID 
+                                WHERE INVENTORY.Inv_Name = ${ware_name} 
+                                GROUP BY 
+                                    INVENTORY.Inv_ID, 
+                                    INVENTORY.Inv_Name, 
+                                    INVENTORY.Governorate, 
+                                    INVENTORY.City, 
+                                    INVENTORY.Responsible, 
+                                    INVENTORY.Capacity`);
+    const data2 = await db.query(`SELECT `);
+
+    if(data1.recordset == []){
+        return res.status(404).json({msg: "There is no warehouses yet"});
+    }
+
+    if(data2.recordset == []){
+        return res.status(404).json({msg: "There is no items in the warehouse yet"});
+    }
+
+    res.json([data1.recordset, data2.recordset]);
+});
+
+app.get('/api/warehouse_manager/', async (req, res) => {
+    const data = await db.query(`SELECT Responsible, Inv_Name FROM INVENTORY`);
+
+    if(data.recordset == []){
+        return res.status(404).json({msg: "There is no Warehouse managers yet"});
+    }
+
+    res.status(200).json(data.recordset);
 });
 
 app.listen(port, () => {
