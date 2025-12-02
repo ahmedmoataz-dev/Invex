@@ -7,8 +7,21 @@ const {body, validationResult} = require("express-validator");
 app.use(express.json());
 const port = 123;
 
+const config = {
+    user: "ahmed",
+    password: "1234",
+    server: "localhost",
+    database: "Invex",
+    options: {
+        encrypt: false,
+        trustServerCertificate: true
+    }
+};
+
+db.connect(config);
+
 app.get('/api/warehouse/', async (req, res) => {
-    const data = await db.query('');
+    const data = await db.query('SELECT INVENTORY.Inv_Name, INVENTORY.Governorate, INVENTORY.City, INVENTORY.Responsible, INVENTORY.Capacity, SUM(ITEM.Item_Quantity) AS Total_Quantity FROM INVENTORY JOIN INV_CAT ON INVENTORY.Inv_ID = INV_CAT.Inv_ID JOIN CATEGORY ON CATEGORY.Cat_ID = INV_CAT.Cat_ID JOIN ITEM ON ITEM.Cat_ID = CATEGORY.Cat_ID GROUP BY INVENTORY.Inv_ID');
     if(data.recordset == []){
         return res.status(404).json({msg: "There is no warehouses yet"});
     }
@@ -56,7 +69,7 @@ app.post('/api/warehouse/', [
     const id = crypto.randomUUID();
     const {name, governorate, city, capacity, responsible} = req.body;
     
-    await db.query(``);
+    await db.query(`INSERT INTO INVENTORY VALUES(${id}, ${governorate}, ${city}, ${capacity}, ${responsible}, ${name})`);
 
     res.status(201).json({  id: id, 
                             name: name, 
@@ -65,4 +78,8 @@ app.post('/api/warehouse/', [
                             capacity: capacity, 
                             responsible: responsible
     });
+});
+
+app.listen(port, () => {
+    console.log(`Listening on port ${port}`);
 });
