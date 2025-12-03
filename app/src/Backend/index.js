@@ -21,7 +21,8 @@ const config = {
 db.connect(config);
 
 app.get('/api/warehouse/', async (req, res) => {
-    const data = await db.query(`SELECT 
+    const data = await db.query(`
+                                SELECT 
                                     INVENTORY.Inv_Name, 
                                     INVENTORY.Governorate, 
                                     INVENTORY.City, 
@@ -41,7 +42,8 @@ app.get('/api/warehouse/', async (req, res) => {
                                     INVENTORY.Governorate, 
                                     INVENTORY.City, 
                                     INVENTORY.Responsible, 
-                                    INVENTORY.Capacity`);
+                                    INVENTORY.Capacity
+                                `);
     if(data.recordset == []){
         return res.status(404).json({msg: "There is no warehouses yet"});
     }
@@ -89,7 +91,7 @@ app.post('/api/warehouse/', [
     const id = crypto.randomUUID();
     const {name, governorate, city, capacity, responsible} = req.body;
     
-    await db.query(`INSERT INTO INVENTORY VALUES(${id}, ${governorate}, ${city}, ${capacity}, ${responsible}, ${name})`);
+    await db.query(`INSERT INTO INVENTORY VALUES('${id}', '${governorate}', '${city}', ${capacity}, '${responsible}', '${name}')`);
 
     res.status(201).json({  id: id, 
                             name: name, 
@@ -102,7 +104,8 @@ app.post('/api/warehouse/', [
 
 app.get('/api/warehouse/:ware_name', async (req, res) => {
     const ware_name = req.params.ware_name;
-    const data1 = await db.query(`SELECT 
+    const data1 = await db.query(`
+                                SELECT 
                                     INVENTORY.Inv_Name, 
                                     INVENTORY.Governorate, 
                                     INVENTORY.City, 
@@ -116,15 +119,41 @@ app.get('/api/warehouse/:ware_name', async (req, res) => {
                                     ON CATEGORY.Cat_ID = INV_CAT.Cat_ID 
                                 JOIN ITEM 
                                     ON ITEM.Cat_ID = CATEGORY.Cat_ID 
-                                WHERE INVENTORY.Inv_Name = ${ware_name} 
+                                WHERE INVENTORY.Inv_Name = '${ware_name}' 
                                 GROUP BY 
                                     INVENTORY.Inv_ID, 
                                     INVENTORY.Inv_Name, 
                                     INVENTORY.Governorate, 
                                     INVENTORY.City, 
                                     INVENTORY.Responsible, 
-                                    INVENTORY.Capacity`);
-    const data2 = await db.query(`SELECT `);
+                                    INVENTORY.Capacity
+                                `);
+    
+    const data2 = await db.query(`
+                                SELECT 
+                                    CATEGORY.Cat_Name,
+                                    (
+                                        SELECT
+                                            ITEM.Item_Name,
+                                            ITEM.Item_Salery,
+                                            ITEM.Item_Quantity,
+                                            COMPANY.Com_Name
+                                        FROM ITEM
+                                        JOIN DEAL
+                                            ON DEAL.Item_ID = ITEM.Item_ID
+                                        JOIN COMPANY
+                                            ON COMPANY.Contract_ID = DEAL.Contract_ID
+                                        WHERE ITEM.Cat_ID = CATEGORY.Cat_ID
+                                        FOR JSON PATH
+                                    ) AS items
+                                FROM CATEGORY
+                                JOIN INV_CAT
+                                    ON CATEGORY.Cat_ID = INV_CAT.Cat_ID
+                                JOIN INVENTORY
+                                    ON INVENTORY.Inv_ID = INV_CAT.Inv_ID
+                                WHERE INVENTORY.Inv_Name = '${ware_name}'
+                                FOR JSON PATH
+                                `);
 
     if(data1.recordset == []){
         return res.status(404).json({msg: "There is no warehouses yet"});
