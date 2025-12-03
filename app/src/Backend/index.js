@@ -1,6 +1,8 @@
 
 const express = require("express");
 const db = require("mssql");
+const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const app = express();
 const {body, validationResult} = require("express-validator");
 
@@ -19,6 +21,145 @@ const config = {
 };
 
 db.connect(config);
+
+app.post('/api/login/', [
+    body('email')
+        .trim()
+        .notEmpty()
+        .withMessage("Email is required"),
+    body('password')
+        .trim()
+        .notEmpty()
+        .withMessage("Password is required")
+], async (req, res) => {
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+        return res.status(400).json({msg: errors.array()[0].msg});
+    }
+
+    try{
+        const {email, password} = req.body;
+        const userDatabase = await db.query(`
+                                                SELECT 
+                                                    Man_Password 
+                                                FROM MANAGER 
+                                                WHERE Man_Email = '${email}'
+                                            `);
+
+        if(userDatabase.recordset.length === 0){
+            return res.status(400).json({status: "Wrong email, Please try again"});
+        }
+
+        const storedPassword = userDatabase.recordset[0].Man_Password;
+        const correctPassword = await bcrypt.compare(password, storedPassword);
+
+        if(correctPassword){
+            return res.json({status: "successful login"});
+        }else{
+            return res.status(400).json({status: "failed login"});
+        }
+    } catch(error){
+        console.error("Error during login:", error);
+        return res.status(500).json({msg: "Server error"});
+    }
+});
+
+app.get('/api/recent-deals', async (req, res) => {
+    try {
+        const result = await db.query(`
+            SELECT 
+                COMPANY.Com_Name,
+                DEAL.Deal_Cost, 
+                DEAL.Deal_Date
+            FROM DEAL
+            JOIN COMPANY
+                ON COMPANY.Contract_ID = DEAL.Contract_ID
+            ORDER BY DEAL.Deal_Date DESC
+        `);
+
+        if (result.recordset.length === 0) {
+            return res.status(404).json({message: "No Recent Deals found"});
+        }
+
+        res.json(result.recordset);
+
+    } catch (error) {
+        console.error("Error fetching recent deals:", error);
+        return res.status(500).json({error: error.message});
+    }
+});
+
+app.get('/api/managers', async (req, res) => {
+    try {
+        const result = await db.query(`
+            SELECT 
+                Man_Name, 
+                Man_Email 
+            FROM MANAGER
+            ORDER BY Man_Name
+        `);
+
+        if (result.recordset.length === 0) {
+            return res.status(404).json({message: "No managers found"});
+        }
+
+        res.json(result.recordset);
+    } catch (error) {
+        console.error("Error fetching managers:", error);
+        return res.status(500).json({error: error.message});
+    }
+});
+
+app.post('/api/manager', [
+    body('name')
+        .trim()
+        .notEmpty()
+        .withMessage("Name is required"),
+    body('email')
+        .trim()
+        .notEmpty()
+        .withMessage("Email is required")
+        .isEmail()
+        .withMessage("Invalid email"),
+    body('password')
+        .trim()
+        .notEmpty()
+        .withMessage("Password is required")
+        .isLength({min: 6})
+        .withMessage("Password must be at least 6 characters")
+], async (req, res) => {
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+        return res.status(400).json({msg: errors.array()[0].msg});
+    }
+
+    try{
+        const {name, email, password} = req.body;
+
+        const existing = await db.query(`
+            SELECT * 
+            FROM MANAGER 
+            WHERE Man_Email = '${email}'
+        `);
+
+        if(existing.recordset.length > 0){
+            return res.status(400).json({msg: "Email already exists"});
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const id = crypto.randomUUID();
+        await db.query(`
+            INSERT INTO MANAGER 
+            VALUES ('${id}', '${name}', '${hashedPassword}', '${email}')
+        `);
+
+        return res.status(201).json({status: "Manager is successfully added"});
+
+    } catch (error) {
+        console.error("Error adding manager: ", error);
+        return res.status(500).json({msg: "Server error"});
+    }
+});
 
 app.get('/api/warehouse/', async (req, res) => {
     const data = await db.query(`
@@ -44,7 +185,7 @@ app.get('/api/warehouse/', async (req, res) => {
                                     INVENTORY.Responsible, 
                                     INVENTORY.Capacity
                                 `);
-    if(data.recordset == []){
+    if(data.recordset.length === 0){
         return res.status(404).json({msg: "There is no warehouses yet"});
     }
 
@@ -91,7 +232,9 @@ app.post('/api/warehouse/', [
     const id = crypto.randomUUID();
     const {name, governorate, city, capacity, responsible} = req.body;
     
-    await db.query(`INSERT INTO INVENTORY VALUES('${id}', '${governorate}', '${city}', ${capacity}, '${responsible}', '${name}')`);
+    await db.query(`
+                        INSERT INTO INVENTORY 
+                        VALUES('${id}', '${governorate}', '${city}', ${capacity}, '${responsible}', '${name}')`);
 
     res.status(201).json({  id: id, 
                             name: name, 
@@ -155,7 +298,7 @@ app.get('/api/warehouse/:ware_name', async (req, res) => {
                                 FOR JSON PATH
                                 `);
 
-    if(data1.recordset == []){
+    if(data1.recordset.length === 0){
         return res.status(404).json({msg: "There is no warehouses yet"});
     }
 
@@ -169,7 +312,7 @@ app.get('/api/warehouse/:ware_name', async (req, res) => {
 app.get('/api/warehouse_manager/', async (req, res) => {
     const data = await db.query(`SELECT Responsible, Inv_Name FROM INVENTORY`);
 
-    if(data.recordset == []){
+    if(data.recordset.length === 0){
         return res.status(404).json({msg: "There is no Warehouse managers yet"});
     }
 
