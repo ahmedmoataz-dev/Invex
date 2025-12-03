@@ -22,6 +22,11 @@ const config = {
 
 db.connect(config);
 
+async function checkPassword(password, hashed){
+    const result = await bcrypt.compare(password, hashed);
+    return result;
+}
+
 app.post('/api/login/', [
     body('email')
         .trim()
@@ -51,7 +56,7 @@ app.post('/api/login/', [
         }
 
         const storedPassword = userDatabase.recordset[0].Man_Password;
-        const correctPassword = await bcrypt.compare(password, storedPassword);
+        const correctPassword = await checkPassword(password, storedPassword);
 
         if(correctPassword){
             return res.json({status: "successful login"});
@@ -110,6 +115,12 @@ app.get('/api/managers', async (req, res) => {
     }
 });
 
+async function hashPassword(password){
+    const hashedPassword = await bcrypt.hash(password, 10);
+    return hashedPassword;
+}
+
+
 app.post('/api/manager', [
     body('name')
         .trim()
@@ -146,7 +157,7 @@ app.post('/api/manager', [
             return res.status(400).json({msg: "Email already exists"});
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword = await hashPassword(password);
         const id = crypto.randomUUID();
         await db.query(`
             INSERT INTO MANAGER 
