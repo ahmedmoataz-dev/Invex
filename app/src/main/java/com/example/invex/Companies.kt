@@ -29,8 +29,8 @@ import androidx.navigation.NavHostController
 @Composable
 fun CompaniesScreen(navController: NavHostController) {
     val viewModel: CompaniesViewModel = viewModel()
+    val vendorsViewModel: VendorsViewModel = viewModel() // ⚡ نجيب بيانات الفيندورز
 
-    // لتخزين حالات الـ Expand لكل Card
     var expandedStates by remember { mutableStateOf(mapOf<String, Boolean>()) }
 
     Column(
@@ -39,7 +39,6 @@ fun CompaniesScreen(navController: NavHostController) {
             .background(Color(0xFFF5F5F5))
             .padding(20.dp)
     ) {
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -74,7 +73,7 @@ fun CompaniesScreen(navController: NavHostController) {
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             TypeButton("Supplier", viewModel) { expandedStates = mapOf() }
-            TypeButton("Exporter", viewModel) { expandedStates = mapOf() }
+            TypeButton("Importer", viewModel) { expandedStates = mapOf() }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -110,7 +109,12 @@ fun CompaniesScreen(navController: NavHostController) {
             modifier = Modifier.fillMaxSize()
         ) {
             items(viewModel.filteredList) { company ->
-                CompanyCard(company, expandedStates) { id, value ->
+                CompanyCard(
+                    company = company,
+                    expandedStates = expandedStates,
+                    navController = navController,
+                    vendorsViewModel = vendorsViewModel
+                ) { id, value ->
                     expandedStates = expandedStates.toMutableMap().also { it[id] = value }
                 }
             }
@@ -118,9 +122,7 @@ fun CompaniesScreen(navController: NavHostController) {
     }
 
     if (viewModel.showAddDialog) {
-        AddCompanyDialog(
-            viewModel = viewModel
-        )
+        AddCompanyDialog(viewModel = viewModel, vendorsViewModel = vendorsViewModel)
     }
 }
 
@@ -145,16 +147,27 @@ fun TypeButton(type: String, viewModel: CompaniesViewModel, onClickAction: () ->
 fun CompanyCard(
     company: Company,
     expandedStates: Map<String, Boolean>,
+    navController: NavHostController,
+    vendorsViewModel: VendorsViewModel,
     onExpandChange: (String, Boolean) -> Unit
 ) {
     val expanded = expandedStates[company.id] ?: false
+    val vendorName = if (company.type == "Importer") {
+        vendorsViewModel.vendorsList.find { it.name == company.name }?.name ?: ""
+    } else ""
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, Color(0xFF243D64).copy(alpha = 0.2f), RoundedCornerShape(12.dp))
             .background(Color.White, RoundedCornerShape(12.dp))
-            .clickable { onExpandChange(company.id, !expanded) }
+            .clickable {
+                if (company.type == "Supplier") {
+                    navController.navigate("supplierDetails/${company.name}")
+                } else {
+                    onExpandChange(company.id, !expanded)
+                }
+            }
             .padding(16.dp)
     ) {
         Text("Name: ${company.name}", fontWeight = FontWeight.Bold, color = Color(0xFF243D64))
@@ -163,17 +176,18 @@ fun CompanyCard(
             color = Color(0xFF6C7A89)
         )
 
-        if (expanded) {
+        if (expanded && company.type != "Supplier") {
             Spacer(modifier = Modifier.height(8.dp))
             Text("Phone: ${company.phone}", color = Color(0xFF243D64))
             Text("Email: ${company.email}", color = Color(0xFF243D64))
-            Text("License No.: ${company.licenseNumber}", color = Color(0xFF243D64))
+            Text("Vendor: ${company.vendor}", color = Color(0xFF243D64))
+
         }
     }
 }
 
 @Composable
-fun AddCompanyDialog(viewModel: CompaniesViewModel) {
+fun AddCompanyDialog(viewModel: CompaniesViewModel, vendorsViewModel: VendorsViewModel) {
 
     var name by remember { mutableStateOf("") }
     var governorate by remember { mutableStateOf("") }
@@ -181,8 +195,9 @@ fun AddCompanyDialog(viewModel: CompaniesViewModel) {
     var street by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
-    var licenseNumber by remember { mutableStateOf("") }
     var type by remember { mutableStateOf(viewModel.selectedType.value) }
+    var selectedVendor by remember { mutableStateOf<String?>(null) }
+    var expandedVendorDropdown by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -225,7 +240,6 @@ fun AddCompanyDialog(viewModel: CompaniesViewModel) {
             Spacer(modifier = Modifier.height(8.dp))
             CompanyInputField("Email", email,{ email = it })
             Spacer(modifier = Modifier.height(8.dp))
-            CompanyInputField("License Number", licenseNumber,{ licenseNumber = it })
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -246,7 +260,38 @@ fun AddCompanyDialog(viewModel: CompaniesViewModel) {
                 }
             }
 
-            // Error message
+            // Vendor dropdown لو النوع Importer
+            if (type == "Importer") {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Select Vendor", fontWeight = FontWeight.Medium, color = Color(0xFF243D64))
+                Spacer(modifier = Modifier.height(4.dp))
+                Box {
+                    Text(
+                        text = selectedVendor ?: "Select vendor",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { expandedVendorDropdown = true }
+                            .background(Color(0xFFF0F0F0), RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    )
+                    DropdownMenu(
+                        expanded = expandedVendorDropdown,
+                        onDismissRequest = { expandedVendorDropdown = false },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        vendorsViewModel.vendorsList.forEach { vendor ->
+                            DropdownMenuItem(
+                                text = { Text(vendor.name) },
+                                onClick = {
+                                    selectedVendor = vendor.name
+                                    expandedVendorDropdown = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
             if (viewModel.errorMessage.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(viewModel.errorMessage, color = Color.Red, fontSize = 14.sp)
@@ -254,7 +299,6 @@ fun AddCompanyDialog(viewModel: CompaniesViewModel) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
@@ -267,16 +311,20 @@ fun AddCompanyDialog(viewModel: CompaniesViewModel) {
 
                 Button(
                     onClick = {
-                        viewModel.addCompany(
-                            name,
-                            governorate,
-                            city,
-                            street,
-                            phone,
-                            email,
-                            type,
-                            licenseNumber
-                        )
+                        if (type == "Importer" && selectedVendor == null) {
+                            viewModel.errorMessage = "Please select a vendor"
+                        } else {
+                            viewModel.addCompany(
+                                name,
+                                governorate,
+                                city,
+                                street,
+                                phone,
+                                email,
+                                type,
+                                selectedVendor
+                            )
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF243D64))
                 ) {
@@ -286,6 +334,7 @@ fun AddCompanyDialog(viewModel: CompaniesViewModel) {
         }
     }
 }
+
 @Composable
 fun CompanyInputField(
     label: String,

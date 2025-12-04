@@ -39,7 +39,7 @@ fun OnboardingScreen(navController: NavController) {
         Spacer(modifier = Modifier.height(80.dp))
 
         Image(
-            painter = painterResource(id = R.drawable.my_icon),
+            painter = painterResource(id = R.drawable.myy_icon),
             contentDescription = "Onboarding photo",
             modifier = Modifier.size(400.dp)
         )

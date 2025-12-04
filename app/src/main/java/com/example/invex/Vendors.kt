@@ -3,12 +3,12 @@ package com.example.invex
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,15 +19,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 
 @Composable
-fun ManagersScreen(navController: NavHostController) {
-    val viewModel: ManagersViewModel = viewModel()
+fun VendorsScreen(navController: NavHostController) {
+    val WViewModel:WarehousesViewModel=viewModel()
+    val viewModel: VendorsViewModel = viewModel()
     var showAddDialog by remember { mutableStateOf(false) }
 
     Column(
@@ -36,17 +36,18 @@ fun ManagersScreen(navController: NavHostController) {
             .background(Color(0xFFF5F5F5))
             .padding(20.dp)
     ) {
+
+        // Screen Title
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Managers",
+                text = "Vendors",
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF243D64),
                 modifier = Modifier.weight(1f),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
 
             IconButton(
@@ -55,7 +56,7 @@ fun ManagersScreen(navController: NavHostController) {
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_add),
-                    contentDescription = "Add Manager",
+                    contentDescription = "Add Vendor",
                     tint = Color(0xFF243D64),
                     modifier = Modifier.size(40.dp)
                 )
@@ -64,55 +65,80 @@ fun ManagersScreen(navController: NavHostController) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Search Bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp)
                 .shadow(4.dp, RoundedCornerShape(12.dp))
                 .background(Color.White, RoundedCornerShape(12.dp))
-                .border(BorderStroke(1.dp, Color(0xFF243D64).copy(alpha = 0.2f)), RoundedCornerShape(12.dp))
+                .border(
+                    BorderStroke(1.dp, Color(0xFF243D64).copy(alpha = 0.2f)),
+                    RoundedCornerShape(12.dp)
+                )
                 .padding(horizontal = 16.dp),
             contentAlignment = Alignment.CenterStart
         ) {
             BasicTextField(
-                value = viewModel.searchQuery,
+                value = viewModel.searchQuery.value,
                 onValueChange = { viewModel.updateSearchQuery(it) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                decorationBox = { innerTextField ->
-                    if (viewModel.searchQuery.isEmpty())
-                        Text("Search Warehouses...", color = Color(0xFF6C7A89))
-                    innerTextField()
+                decorationBox = { innerField ->
+                    if (viewModel.searchQuery.value.isEmpty())
+                        Text("Search Vendors...", color = Color(0xFF6C7A89))
+                    innerField()
                 }
             )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Vendors List
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            items(viewModel.filteredList) { manager ->
-                ManagerCard(manager)
+            items(viewModel.filteredList) { vendor ->
+                VendorCard(vendor)
+            }
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    Button(
+                        onClick = { navController.popBackStack() },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF243D64))
+                    ) {
+                        Text("Back", color = Color.White)
+                    }
+                }
             }
         }
     }
 
     if (showAddDialog) {
-        AddManagerDialog(
-            viewModel = viewModel,
-            onDismiss = { showAddDialog = false }
+        AddVendorDialog(
+             viewModel,
+            WViewModel,
+             { showAddDialog = false }
         )
     }
 }
-@Composable
-fun AddManagerDialog(viewModel: ManagersViewModel, onDismiss: () -> Unit) {
 
+@Composable
+fun AddVendorDialog(
+    vendorsViewModel: VendorsViewModel,
+    warehousesViewModel: WarehousesViewModel,
+    onDismiss: () -> Unit
+) {
     var name by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+
+    val warehousesNames = warehousesViewModel.warehousesList.map { it.name }
+    val selectedWarehouse = vendorsViewModel.selectedWarehouse
 
     Box(
         modifier = Modifier
@@ -121,15 +147,17 @@ fun AddManagerDialog(viewModel: ManagersViewModel, onDismiss: () -> Unit) {
             .pointerInput(Unit) {},
         contentAlignment = Alignment.Center
     ) {
+
         Column(
             modifier = Modifier
-                .width(400.dp)
+                .width(380.dp)
                 .shadow(8.dp, RoundedCornerShape(16.dp))
                 .background(Color.White, RoundedCornerShape(16.dp))
                 .padding(24.dp)
         ) {
+
             Text(
-                text = "Add New Manager",
+                text = "Add New Vendor",
                 fontWeight = FontWeight.Bold,
                 fontSize = 22.sp,
                 color = Color(0xFF243D64)
@@ -137,19 +165,61 @@ fun AddManagerDialog(viewModel: ManagersViewModel, onDismiss: () -> Unit) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Input Fields
-            ManagerInputField("Name", name,{ name = it })
-            Spacer(modifier = Modifier.height(8.dp))
-            ManagerInputField("Email", email,{ email = it })
-            Spacer(modifier = Modifier.height(8.dp))
-            ManagerInputField("Password", password,{ password = it })
+            // Name input
+            VendorInputField("Vendor Name", name) { name = it }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ---------------------
+            //   WAREHOUSE DROPDOWN
+            // ---------------------
+            Text(
+                text = "Select Warehouse",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF243D64)
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Box {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .border(1.dp, Color(0xFF243D64), RoundedCornerShape(10.dp))
+                        .clickable{ expanded = true }
+                        .padding(14.dp)
+                ) {
+                    Text(
+                        text = selectedWarehouse ?: "Select Warehouse",
+                        color = if (selectedWarehouse == null) Color.Gray else Color(0xFF243D64),
+                        fontSize = 16.sp
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    warehousesNames.forEach { warehouseName ->
+                        DropdownMenuItem(
+                            text = { Text(warehouseName) },
+                            onClick = {
+                                vendorsViewModel.updateSelectedWarehouse(warehouseName)
+                                expanded = false
+                            }
+                        )
+                    }
+                }
+            }
 
             if (errorMessage.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(errorMessage, color = Color.Red, fontSize = 14.sp)
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -159,20 +229,23 @@ fun AddManagerDialog(viewModel: ManagersViewModel, onDismiss: () -> Unit) {
                     Text("Cancel", color = Color(0xFF6C7A89))
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
                 Button(
                     onClick = {
-                        if (name.isBlank() || email.isBlank() || password.isBlank()) {
-                            errorMessage = "Please fill all fields!"
+                        val warehouse = vendorsViewModel.selectedWarehouse
+                        if (name.isBlank()) {
+                            errorMessage = "Please enter vendor name!"
+                        } else if (vendorsViewModel.selectedWarehouse == null) {
+                            errorMessage = "Please select a warehouse!"
                         } else {
-                            val newManager = Manager(
-                                id = (viewModel.managersList.size + 1).toString(),
-                                name = name,
-                                email = email,
-                                password = password
+                            vendorsViewModel.addVendor(
+                                Vendor(
+                                    id = (vendorsViewModel.vendorsList.size + 1).toString(),
+                                    name = name,
+                                    warehouse = warehouse!!
+                                )
                             )
-                            viewModel.addManager(newManager)
                             onDismiss()
                         }
                     },
@@ -185,8 +258,9 @@ fun AddManagerDialog(viewModel: ManagersViewModel, onDismiss: () -> Unit) {
     }
 }
 
+
 @Composable
-fun ManagerCard(manager: Manager) {
+fun VendorCard(vendor: Vendor) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -194,32 +268,34 @@ fun ManagerCard(manager: Manager) {
             .background(Color.White, RoundedCornerShape(12.dp))
             .padding(16.dp)
     ) {
-        Text("Name: ${manager.name}", fontWeight = FontWeight.Bold, color = Color(0xFF243D64))
-        Text("Email: ${manager.email}", fontWeight = FontWeight.Medium, color = Color(0xFF6C7A89))
+        Text(
+            text = vendor.name,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            color = Color(0xFF243D64)
+        )
+        Text(text = vendor.warehouse, fontWeight = FontWeight.Medium, color = Color(0xFF6C7A89))
+
     }
 }
 
 @Composable
-fun ManagerInputField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    modifier: Modifier = Modifier
-) {
-    Column(modifier = modifier.fillMaxWidth()) {
+fun VendorInputField(label: String, value: String, onValueChange: (String) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+
         Text(
             text = label,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             color = Color(0xFF243D64)
         )
+
         Spacer(modifier = Modifier.height(4.dp))
+
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)

@@ -78,7 +78,7 @@ fun HomeScreenContent(
                     subtitle = shortcut.subtitle,
                     onClick = {
                         when (shortcut.title) {
-                            "Items" -> navController.navigate("items")
+                            "vendors" -> navController.navigate("vendors")
                             "Warehouses" -> navController.navigate("warehouses")
                             "Companies" -> navController.navigate("companies")
                             "Warehouse Managers" -> navController.navigate("warehousesManagers")
