@@ -72,7 +72,9 @@ app.post('/api/login/', [
 app.get('/api/recent-deals', async (req, res) => {
     try {
         const result = await db.query(`
-            SELECT 
+            SELECT
+                DEAL.Deal_ID
+                COMPANY.Company_Type,
                 COMPANY.Com_Name,
                 DEAL.Deal_Cost, 
                 DEAL.Deal_Date
@@ -323,7 +325,7 @@ app.get('/api/warehouse/:ware_name', async (req, res) => {
 });
 
 app.get('/api/warehouse_manager/', async (req, res) => {
-    const data = await db.query(`SELECT Responsible, Inv_Name FROM INVENTORY`);
+    const data = await db.query(`SELECT Responsible, Inv_Name, Governorate, City FROM INVENTORY`);
 
     if(data.recordset.length === 0){
         return res.status(404).json({msg: "There is no Warehouse managers yet"});
@@ -332,7 +334,7 @@ app.get('/api/warehouse_manager/', async (req, res) => {
     res.status(200).json(data.recordset);
 });
 
-app.post('/api/addCategory/', [
+app.post('/api/categories/', [
     body('name')
         .trim()
         .notEmpty()
