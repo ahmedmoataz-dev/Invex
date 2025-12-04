@@ -297,6 +297,8 @@ app.get('/api/warehouse/:ware_name', async (req, res) => {
                                             ON DEAL.Item_ID = ITEM.Item_ID
                                         JOIN COMPANY
                                             ON COMPANY.Contract_ID = DEAL.Contract_ID
+                                        JOIN SUPPLIER
+                                            ON SUPPLIER.SUPContract_ID = COMPANY.Contract_ID
                                         WHERE ITEM.Cat_ID = CATEGORY.Cat_ID
                                         FOR JSON PATH
                                     ) AS items
@@ -328,6 +330,127 @@ app.get('/api/warehouse_manager/', async (req, res) => {
     }
 
     res.status(200).json(data.recordset);
+});
+
+app.post('/api/addCategory/', [
+    body('name')
+        .trim()
+        .notEmpty()
+        .withMessage("Name is required")
+        .isString()
+        .withMessage("Invalid name")
+], async (req, res) => {
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+        return res.status(400).json({msg: errors.array()[0].msg});
+    }
+
+    const {name} = req.body;
+    const id = crypto.randomUUID();
+    const data = await db.query(`SELECT Cat_Name FROM CATEGORY WHERE Cat_Name = '${name}'`);
+    if(data.recordset.length !== 0){
+        return res.status(400).json({msg: "Already existed"});
+    }
+
+    await db.query(`INSERT INTO CATEGORY VALUES ('${id}', '${name}')`);
+    res.json({msg: "Category is added successfully"});
+});
+
+app.get('/api/categories/', async (req, res) => {
+    const data = await db.query(`SELECT Cat_Name FROM CATEGORY`);
+
+    if(data.recordset.length === 0){
+        return res.status(404).json({msg: "There is no categories yet"});
+    }
+
+    res.json(data.recordset);
+});
+
+app.post('/api/item/', [
+    body('supplier')
+        .trim()
+        .notEmpty()
+        .withMessage("Supplier is required"),
+    body('category')
+        .trim()
+        .notEmpty()
+        .withMessage("Category is required"),
+    body('item')
+        .trim()
+        .notEmpty()
+        .withMessage("Item name is required"),
+    body('price')
+        .trim()
+        .notEmpty()
+        .withMessage("Price is required")
+        .isFloat({min: 0.01})
+        .withMessage("Price must be above positive")        
+], async (req, res) => {
+    const {supplier, category, item, price} = req.body;
+    const sup = await db.query(`SELECT SUPPLIER.SUPContract_ID FROM COMPANY JOIN SUPPLIER ON SUPPLIER.SUPContract_ID = COMPANY.Contract_ID WHERE COMPANY.Com_Name = '${supplier}'`);
+    const cat = await db.query(`SELECT Cat_ID FROM CATEGORY WHERE Cat_Name = '${category}'`);
+    if(cat.recordset.length === 0){
+        return res.status(400).json({msg: "Category is not existed"});
+    }
+    if(sup.recordset.length === 0){
+        return res.status(400).json({msg: "Supplier is not existed"});
+    }
+
+    const id = crypto.randomUUID();
+    const cat_id = cat.recordset[0].Cat_ID;
+    const sup_id = sup.recordset[0].SUPContract_ID;
+    await db.query(`INSERT INTO ITEM VALUES ('${id}', '${item}', 0, ${price}, '${cat_id.recordset[0].Cat_ID}', '${sup_id}')`);
+    res.json({msg: "Item successfully added"});
+});
+
+app.get('/api/vendors/', async (req, res) => {
+    const data = await db.query(`
+                                    SELECT
+                                        VENDOR.Ven_Name,
+                                        INVENTORY.Inv_Name,
+                                    FROM VENDOR
+                                    JOIN INVENTORY
+                                        ON VENDOR.Inv_ID = INVENTORY.Inv_ID
+                                `);
+    
+    if(data.recordset.length === 0){
+        return res.status(400).json({msg: "There is no Vendors yet"});
+    }
+
+    res.json(data.recordset);
+});
+
+app.post('/api/vendors/', [
+    body('vendor')
+        .trim()
+        .notEmpty()
+        .withMessage("Vendor name is required")
+        .isAlpha('en-US', {ignore: ' '})
+        .withMessage("Vendor name must be in letters"),
+    body('warehouse')
+        .trim()
+        .notEmpty()
+        .withMessage("Warehouse name is required")
+], async (req, res) => {
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+        return res.status(400).json({error: errors.array()[0].msg});
+    }
+
+    const {vendor, warehouse} = req.body;
+    const inv_id = await db.query(`SELECT Inv_ID FROM INVENTORY WHERE Inv_Name = '${warehouse}'`);
+    if(inv_id.recordset.length === 0){
+        return res.status(404).json({msg: "Warehouse is not existed"});
+    }
+
+    const ven_id = crypto.randomUUID();
+    await db.query(`INSERT INTO VENDOR VALUES('${ven_id}', '${inv_id.recordset[0].Inv_ID}', '${vendor}')`);
+    res.status(201).json({msg: "Vendor added successfully"});
+});
+
+app.get('/api/warehouse_name', async (req, res) => {
+    const data = await db.query(`SELECT Inv_Name FROM INVENTORY`);
+    res.json(data.recordset);
 });
 
 app.listen(port, () => {
