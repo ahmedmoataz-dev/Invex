@@ -77,7 +77,7 @@ app.get('/api/recent-deals', async (req, res) => {
     try {
         const result = await db.query(`
             SELECT
-                DEAL.Deal_ID
+                DEAL.Deal_ID,
                 COMPANY.Company_Type,
                 COMPANY.Com_Name,
                 DEAL.Deal_Cost, 
@@ -338,31 +338,22 @@ app.post('/api/categories/', [
         .notEmpty()
         .withMessage("Name is required")
         .isString()
-        .withMessage("Invalid name"),
-    body('warehouse')
-        .trim()
-        .notEmpty()
-        .withMessage("Warehouse is required")
+        .withMessage("Invalid name")
 ], async (req, res) => {
     const errors = validationResult(req);
     if(!errors.isEmpty()){
         return res.status(400).json({msg: errors.array()[0].msg});
     }
 
-    const {name, warehouse} = req.body;
+    const {name} = req.body;
     const id = crypto.randomUUID();
     const data = await db.query(`SELECT Cat_Name FROM CATEGORY WHERE Cat_Name = '${name}'`);
-    const invid = await db.query(`SELECT Inv_ID FROM INVENTORY WHERE Inv_Name = '${warehouse}'`);
-    if(invid.recordset.length === 0){
-        return res.status(404).json({msg: "Warehouse is not existed"});
-    }
-    const Inv_ID = invid.recordset[0].Inv_ID;
+
     if(data.recordset.length !== 0){
         return res.status(400).json({msg: "Already existed"});
     }
 
     await db.query(`INSERT INTO CATEGORY VALUES ('${id}', '${name}')`);
-    await db.query(`INSERT INTO INV_CAT VALUES ('${Inv_ID}','${id}')`);
     res.json({msg: "Category is added successfully"});
 });
 
