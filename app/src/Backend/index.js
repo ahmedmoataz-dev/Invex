@@ -31,11 +31,15 @@ app.post('/api/login/', [
     body('email')
         .trim()
         .notEmpty()
-        .withMessage("Email is required"),
+        .withMessage("Email is required")
+        .isEmail()
+        .withMessage("Invalid email"),
     body('password')
         .trim()
         .notEmpty()
         .withMessage("Password is required")
+        .isLength({min: 6})
+        .withMessage("Password must be at least 6 characters")
 ], async (req, res) => {
     const errors = validationResult(req);
     if(!errors.isEmpty()){
@@ -249,13 +253,7 @@ app.post('/api/warehouse/', [
                         INSERT INTO INVENTORY 
                         VALUES('${id}', '${governorate}', '${city}', ${capacity}, '${responsible}', '${name}')`);
 
-    res.status(201).json({  id: id, 
-                            name: name, 
-                            governorate: governorate, 
-                            city: city, 
-                            capacity: capacity, 
-                            responsible: responsible
-    });
+    res.status(201).json({msg: "Inventory created successfully"});
 });
 
 app.get('/api/warehouse/:ware_name', async (req, res) => {
@@ -340,21 +338,31 @@ app.post('/api/categories/', [
         .notEmpty()
         .withMessage("Name is required")
         .isString()
-        .withMessage("Invalid name")
+        .withMessage("Invalid name"),
+    body('warehouse')
+        .trim()
+        .notEmpty()
+        .withMessage("Warehouse is required")
 ], async (req, res) => {
     const errors = validationResult(req);
     if(!errors.isEmpty()){
         return res.status(400).json({msg: errors.array()[0].msg});
     }
 
-    const {name} = req.body;
+    const {name, warehouse} = req.body;
     const id = crypto.randomUUID();
     const data = await db.query(`SELECT Cat_Name FROM CATEGORY WHERE Cat_Name = '${name}'`);
+    const invid = await db.query(`SELECT Inv_ID FROM INVENTORY WHERE Inv_Name = '${warehouse}'`);
+    if(invid.recordset.length === 0){
+        return res.status(404).json({msg: "Warehouse is not existed"});
+    }
+    const Inv_ID = invid.recordset[0].Inv_ID;
     if(data.recordset.length !== 0){
         return res.status(400).json({msg: "Already existed"});
     }
 
     await db.query(`INSERT INTO CATEGORY VALUES ('${id}', '${name}')`);
+    await db.query(`INSERT INTO INV_CAT VALUES ('${Inv_ID}','${id}')`);
     res.json({msg: "Category is added successfully"});
 });
 
@@ -453,6 +461,170 @@ app.post('/api/vendors/', [
 app.get('/api/warehouse_name', async (req, res) => {
     const data = await db.query(`SELECT Inv_Name FROM INVENTORY`);
     res.json(data.recordset);
+});
+
+app.get('/api/company/supplier/', async (req, res) => {
+    const data = await db.query(`SELECT Com_Name, Governorate, City, Street FROM COMPANY WHERE Company_Type = 'exporter'`);
+    res.json(data.recordset);
+});
+
+app.get('/api/company/importer/', async (req, res) => {
+    const data = await db.query(`
+                                SELECT 
+                                    COMPANY.Com_Name, 
+                                    COMPANY.Governorate, 
+                                    COMPANY.City, 
+                                    COMPANY.Street, 
+                                    COMPANY.Com_Phone, 
+                                    COMPANY.Com_Email,
+                                    VENDOR.Ven_Name 
+                                FROM COMPANY
+                                JOIN PHARMACIES
+                                    ON PHARMACIES.PHContract_ID = COMPANY.Contract_ID
+                                JOIN VENDOR
+                                    ON VENDOR.Ven_ID = PHARMACIES.Ven_ID
+                                WHERE Company_Type = 'exporter'
+                            `);
+    res.json(data.recordset);
+});
+
+app.get('/api/company/:type', async (req, res) => {
+    const com_type = req.params.type;
+    const data = await db.query(`SELECT Com_Name FROM COMPANY WHERE Company_Type = '${com_type}'`);
+    res.json(data.recordset);
+});
+
+app.post('/api/company/supplier/', [
+    body('name')
+        .trim()
+        .notEmpty()
+        .withMessage("Name is required")
+        .isAlpha('en-US', { ignore: ' ' })
+        .withMessage("Name must contain only letters"),
+    body('governorate')
+        .trim()
+        .notEmpty()
+        .withMessage("Governorate is required")
+        .isAlpha('en-US', { ignore: ' ' })
+        .withMessage("Governorate must contain only letters"),
+    body('city')
+        .trim()
+        .notEmpty()
+        .withMessage("City is required")
+        .isAlpha('en-US', { ignore: ' ' })
+        .withMessage("City must contain only letters"),
+    body('street')
+        .trim()
+        .notEmpty()
+        .withMessage("Street is required")
+        .isString()
+        .withMessage("Invalid street"),
+    body('phone')
+        .trim()
+        .notEmpty()
+        .withMessage("Phone is required")
+        .isMobilePhone("ar-EG")
+        .withMessage("Invalid phone number"),
+    body('email')
+        .trim()
+        .notEmpty()
+        .withMessage("Email is required")
+        .isEmail()
+        .withMessage("Invalid email")
+], async (req, res) => {
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+        return res.status(400).json({msg: errors.array()[0].msg});
+    }
+
+    const {name, governorate, city, street, phone, email} = req.body;
+    const contract_id = crypto.randomUUID();
+    const supplier_id = crypto.randomUUID();
+    await db.query(`
+        INSERT INTO COMPANY 
+        VALUES(
+            '${contract_id}', 
+            '${name}', 
+            '${governorate}', 
+            '${city}', 
+            '${street}',
+            '${phone}',
+            '${email}',
+            'exporter' 
+        )`);
+    await db.query(`INSERT INTO SUPPLIER VALUES('${contract_id}','${supplier_id}')`);
+    res.json({msg: "Supplier created successfully"});
+});
+
+app.post('/api/company/supplier/', [
+    body('name')
+        .trim()
+        .notEmpty()
+        .withMessage("Name is required")
+        .isAlpha('en-US', { ignore: ' ' })
+        .withMessage("Name must contain only letters"),
+    body('governorate')
+        .trim()
+        .notEmpty()
+        .withMessage("Governorate is required")
+        .isAlpha('en-US', { ignore: ' ' })
+        .withMessage("Governorate must contain only letters"),
+    body('city')
+        .trim()
+        .notEmpty()
+        .withMessage("City is required")
+        .isAlpha('en-US', { ignore: ' ' })
+        .withMessage("City must contain only letters"),
+    body('street')
+        .trim()
+        .notEmpty()
+        .withMessage("Street is required")
+        .isString()
+        .withMessage("Invalid street"),
+    body('phone')
+        .trim()
+        .notEmpty()
+        .withMessage("Phone is required")
+        .isMobilePhone("ar-EG")
+        .withMessage("Invalid phone number"),
+    body('email')
+        .trim()
+        .notEmpty()
+        .withMessage("Email is required")
+        .isEmail()
+        .withMessage("Invalid email"),
+    body('vendor')
+        .trim()
+        .notEmpty()
+        .withMessage("Vendor is required")
+], async (req, res) => {
+    const errors = validationResult(req);
+    if(!errors.isEmpty()){
+        return res.status(400).json({msg: errors.array()[0].msg});
+    }
+
+    const {name, governorate, city, street, phone, email, vendor} = req.body;
+    const venid = await db.query(`SELECT Ven_ID FROM VENDOR WHERE Ven_Name = '${vendor}'`);
+    if(venid.recordset.length === 0){
+        return res.status(404).json({msg: "Vendor is not existed"});
+    }
+
+    const contract_id = crypto.randomUUID();
+    const Ven_ID = venid.recordset[0].Ven_ID;
+    await db.query(`
+        INSERT INTO COMPANY 
+        VALUES(
+            '${contract_id}',
+            '${name}',
+            '${governorate}',
+            '${city}',
+            '${street}',
+            '${phone}',
+            '${email}',
+            'importer' 
+        )`);
+    await db.query(`INSERT INTO PHARMACIES VALUES('${contract_id}','${Ven_ID}')`);
+    res.json({msg: "Pharmacy created successfully"});
 });
 
 app.listen(port, () => {
