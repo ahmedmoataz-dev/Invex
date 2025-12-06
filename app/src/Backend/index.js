@@ -43,7 +43,7 @@ app.post('/api/login/', [
 ], async (req, res) => {
     const errors = validationResult(req);
     if(!errors.isEmpty()){
-        return res.status(400).json({msg: errors.array()[0].msg});
+        return res.status(400).json({status: errors.array()[0].msg});
     }
 
     try{
@@ -388,7 +388,7 @@ app.post('/api/item/', [
         .withMessage("Price must be above positive")        
 ], async (req, res) => {
     const {supplier, category, item, price} = req.body;
-    const sup = await db.query(`SELECT SUPPLIER.SUPContract_ID FROM COMPANY JOIN SUPPLIER ON SUPPLIER.SUPContract_ID = COMPANY.Contract_ID WHERE COMPANY.Com_Name = '${supplier}'`);
+    const sup = await db.query(`SELECT SUPPLIER.SUPContract_ID AS SUPContract_ID FROM COMPANY JOIN SUPPLIER ON SUPPLIER.SUPContract_ID = COMPANY.Contract_ID WHERE COMPANY.Com_Name = '${supplier}'`);
     const cat = await db.query(`SELECT Cat_ID FROM CATEGORY WHERE Cat_Name = '${category}'`);
     if(cat.recordset.length === 0){
         return res.status(400).json({msg: "Category is not existed"});
@@ -547,7 +547,7 @@ app.post('/api/company/supplier/', [
     res.json({msg: "Supplier created successfully"});
 });
 
-app.post('/api/company/supplier/', [
+app.post('/api/company/pharma/', [
     body('name')
         .trim()
         .notEmpty()
@@ -616,6 +616,334 @@ app.post('/api/company/supplier/', [
         )`);
     await db.query(`INSERT INTO PHARMACIES VALUES('${contract_id}','${Ven_ID}')`);
     res.json({msg: "Pharmacy created successfully"});
+});
+
+app.get('/api/supplier-details/:name', async (req, res) => {
+    try {
+        const name = req.params.name;
+        if (!name) 
+            return res.status(400).json({msg: "Supplier name required"});
+
+        const data1 = await db.query(`
+                                        SELECT 
+                                            COMPANY.Com_Name,
+                                            COMPANY.Governorate,
+                                            COMPANY.City,
+                                            COMPANY.Street,
+                                            COMPANY.Com_Phone,
+                                            COMPANY.Com_Email,
+                                        FROM COMPANY
+                                        WHERE COMPANY.Com_Name = '${name}'
+                                    `);
+        const data2 = await db.query(`
+                                        SELECT
+                                            CATEGORY.Cat_Name,
+                                            (
+                                                SELECT
+                                                    ITEM.Item_Name,
+                                                    ITEM.Item_Salery
+                                                FROM ITEM
+                                                WHERE ITEM.Cat_ID = CATEGORY.Cat_ID
+                                                FOR JSON PATH
+                                            ) AS items
+                                        FROM CATEGORY
+                                        JOIN SUPPLIER 
+                                            ON SUPPLIER.SUPContract_ID = CATEGORY.SUP_ID
+                                        JOIN COMPANY
+                                            ON COMPANY.Contract_ID = SUPPLIER.SUPContract_ID
+                                        WHERE COMPANY.Com_Name = '${name}';
+                                    `);
+
+        res.status(200).json(data1.recordset, data2.recordset);
+
+    } catch (err) {
+        return res.status(500).json({ status: "invalid", msg: "Server error" });
+    }
+});
+
+app.get('/api/category-items-exporter/:name', async (req, res) => {
+    try {
+        const name = req.params.name;
+        if (!name) 
+            return res.status(400).json({msg: "Supplier name required"});
+
+        const data = await db.query(`
+                                        SELECT
+                                            CATEGORY.Cat_Name,
+                                            (
+                                                SELECT
+                                                    ITEM.Item_Name,
+                                                    ITEM.Item_Salery
+                                                FROM ITEM
+                                                WHERE ITEM.Cat_ID = CATEGORY.Cat_ID
+                                                FOR JSON PATH
+                                            ) AS items
+                                        FROM CATEGORY
+                                        JOIN SUPPLIER 
+                                            ON SUPPLIER.SUPContract_ID = CATEGORY.SUP_ID
+                                        JOIN COMPANY
+                                            ON COMPANY.Contract_ID = SUPPLIER.SUPContract_ID
+                                        WHERE COMPANY.Com_Name = '${name}';
+                                    `);
+        res.status(200).json(data.recordset);
+    } catch (err) {
+        return res.status(500).json({ status: "invalid", msg: "Server error" });
+    }
+});
+
+app.get('/api/category-items-importer/:name', async (req, res) => {
+    try {
+        const name = req.params.name;
+        if (!name) 
+            return res.status(400).json({msg: "Supplier name required"});
+
+        const data1 = await db.query(`
+                                        SELECT
+                                            VENDOR.Ven_Name,
+                                            INVENTORY.Inv_Name
+                                        FROM COMPANY
+                                        JOIN PHARMACIES
+                                            ON COMPANY.Contract_ID = PHARMACIES.PHContract_ID
+                                        JOIN VENDOR
+                                            ON VENDOR.Ven_ID = PHARMACIES.Ven_ID
+                                        JOIN INVENTORY
+                                            ON INVENTORY.Inv_ID = VENDOR.Inv_ID
+                                        WHERE COMPANY.Com_Name = '${name}'
+            `);
+
+        const data2 = await db.query(`
+                                        SELECT
+                                            CATEGORY.Cat_Name,
+                                            (
+                                                SELECT
+                                                    ITEM.Item_Name,
+                                                    ITEM.Item_Salery,
+                                                    ITEM.Item_Quantity
+                                                FROM ITEM
+                                                WHERE ITEM.Cat_ID = CATEGORY.Cat_ID
+                                                FOR JSON PATH
+                                            ) AS items
+                                        FROM CATEGORY
+                                        JOIN INV_CAT
+                                            ON INV_CAT.Cat_ID = CATEGORY.Cat_ID
+                                        JOIN INVENTORY
+                                            ON INVENTORY.Inv_ID = INV_CAT.Inv_ID
+                                        WHERE INVENTORY.Inv_Name = '${data1.recordset[0].Inv_Name}';
+                                    `);
+
+        res.status(200).json({
+            vendor_inventory: data1.recordset,
+            categories: data2.recordset
+        });
+
+    } catch (err) {
+        return res.status(500).json({ status: "invalid", msg: "Server error" });
+    }
+});
+
+app.post('/api/deal-import/', async (req, res) => {
+    try {
+        const {com_name, war_name, items, total_price} = req.body;
+
+        if (!com_name || !war_name || !Array.isArray(items) || !items.length)
+            return res.status(400).json({msg: "Missing data"});
+
+        const company = await db.query(`SELECT
+                                            COMPANY.Contract_ID,
+                                            SUPPLIER.SUP_VEN_ID 
+                                        FROM COMPANY
+                                        JOIN SUPPLIER
+                                            ON SUPPLIER.SUPContract_ID = COMPANY.Contract_ID
+                                        WHERE COMPANY.Com_Name='${com_name}
+                                    '`);
+        if (!company.recordset.length)
+            return res.status(404).json({msg: "Company not found"});
+
+        const warehouse = await db.query(`SELECT Inv_ID FROM INVENTORY WHERE Inv_Name='${war_name}'`);
+        if (!warehouse.recordset.length) 
+            return res.status(404).json({msg: "Warehouse not found"});
+
+        const contractId = company.recordset[0].Contract_ID;
+        const ven_id = company.recordset[0].SUP_VEN_ID;
+        const invId = warehouse.recordset[0].Inv_ID;
+
+        const dealId = crypto.randomUUID();
+        const dealDate = new Date().toISOString();
+
+        await db.query(`
+            INSERT INTO DEAL
+            VALUES ('${dealId}', '${ven_id}', '${contractId}', ${total_price}, '${dealDate}')
+        `);
+
+        for (const it of items) {
+            const item = await db.query(`SELECT Item_ID, Item_Quantity, Cat_ID FROM ITEM WHERE Item_Name = '${it.name}'`);
+            if (!item.recordset.length)
+                return res.status(404).json({ status: "not_found", msg: "Item not found: " + it.name });
+
+            const catId = item.recordset[0].Cat_ID;
+            const newQty = item.recordset[0].Item_Quantity + it.quantity;
+            const itemId = item.recordset[0].Item_ID;
+
+            await db.query(`UPDATE ITEM SET Item_Quantity = ${newQty} WHERE Item_ID = '${itemId}'`);
+            await db.query(`INSERT INTO ITEM_DEAL VALUES ('${dealId}', '${itemId}', '${newQty}')`);
+
+            const invcat = await db.query(`SELECT * FROM INV_CAT WHERE Inv_ID = '${invId}' AND Cat_ID = '${catId}'`);
+            if (!invcat.recordset.length)
+                await db.query(`INSERT INTO INV_CAT VALUES ('${invId}', '${catId}')`);
+        }
+
+        return res.status(201).json({status: "success"});
+
+    } catch (err) {
+        return res.status(500).json({ status: "invalid", msg: "Server error" });
+    }
+});
+
+app.post('/api/deal-export/', async (req, res) => {
+    try {
+        const {com_name, items, total_price} = req.body;
+
+        if (!com_name || !Array.isArray(items) || !items.length)
+            return res.status(400).json({msg: "Missing data"});
+
+        const company = await db.query(`SELECT Contract_ID FROM COMPANY WHERE Com_Name = '${com_name}'`);
+        if (!company.recordset.length)
+            return res.status(404).json({msg: "Company not found"});
+
+        const contractId = company.recordset[0].Contract_ID;
+
+        const dealId = crypto.randomUUID();
+        const dealDate = new Date().toISOString();
+        const iddd = await db.query(`
+                                        SELECT
+                                            Ven_ID
+                                        FROM COMPANY
+                                        JOIN PHARMACIES
+                                            ON COMPANY.Contract_ID = PHARMACIES.PHContract_ID
+                                        JOIN VENDOR
+                                            ON VENDOR.Ven_ID = PHARMACIES.Ven_ID
+                                        WHERE COMPANY.Com_Name = '${com_name}'
+            `);
+
+        const ven_id = iddd.recordset[0].Ven_ID;
+
+        await db.query(`
+            INSERT INTO DEAL VALUES ('${dealId}', '${ven_id}', '${contractId}', ${total_price}, '${dealDate}')
+        `);
+
+        for (const it of items) {
+            const item = await db.query(`SELECT Item_ID, Item_Quantity FROM ITEM WHERE Item_Name = '${it.name}'`);
+            if (!item.recordset.length)
+                return res.status(404).json({msg: `Item not found: ${it.name}`});
+
+            const itemId = item.recordset[0].Item_ID;
+            const current = item.recordset[0].Item_Quantity;
+
+            if (current < it.quantity)
+                return res.status(400).json({ status: "invalid", msg: "Not enough quantity" });
+
+            await db.query(`UPDATE ITEM SET Item_Quantity=${current - it.quantity} WHERE Item_ID = '${itemId}'`);
+            await db.query(`INSERT INTO ITEM_DEAL VALUES ('${dealId}', '${itemId}', '${it.quantity}')`);
+        }
+
+        return res.status(201).json({status: "success"});
+
+    } catch (err) {
+        return res.status(500).json({ status: "invalid", msg: "Server error" });
+    }
+});
+
+app.get('/api/deal-details/:id', async (req, res) => {
+    try {
+        const id = req.params.id;
+        if (!id) 
+            return res.status(400).json({ status: "invalid", msg: "Deal ID required" });
+
+        const type = await db.query(`
+                                        SELECT
+                                            COMPANY.Contract_ID,
+                                            COMPANY.Company_Type
+                                        FROM COMPANY
+                                        JOIN DEAL 
+                                            ON COMPANY.Contract_ID = DEAL.Contract_ID
+                                        WHERE DEAL.Deal_ID = '${id}'
+            `);
+
+        let data1 = {};
+        if(type.recordset[0].Company_Type === "importer"){
+            data1 = await db.query(`
+                                        SELECT
+                                            DEAL.Deal_Date,
+                                            DEAL.Deal_Cost,
+                                            COMPANY.Company_Type,
+                                            COMPANY.Com_Name,
+                                            INVENTORY.Inv_Name,
+                                            INVENTORY.Governorate,
+                                            INVENTORY.City,
+                                            VENDOR.Ven_Name
+                                        FROM DEAL
+                                        JOIN COMPANY
+                                            ON COMPANY.Contract_ID = DEAL.Contract_ID
+                                        JOIN PHARMACIES
+                                            ON PHARMACIES.PHContract_ID = COMPANY.Contract_ID
+                                        JOIN VENDOR
+                                            ON VENDOR.Ven_ID = PHARMACIES.Ven_ID
+                                        JOIN INVENTORY
+                                            ON INVENTORY.Inv_ID = VENDOR.Inv_ID
+                                        WHERE DEAL.Deal_ID = '${id}'
+                `);
+        }else{
+            data1 = await db.query(`
+                                        SELECT
+                                            DEAL.Deal_Date,
+                                            DEAL.Deal_Cost,
+                                            COMPANY.Company_Type,
+                                            COMPANY.Com_Name,
+                                            INVENTORY.Inv_Name,
+                                            INVENTORY.Governorate,
+                                            INVENTORY.City
+                                        FROM DEAL
+                                        JOIN COMPANY
+                                            ON COMPANY.Contract_ID = DEAL.Contract_ID
+                                        JOIN SUPPLIER
+                                            ON SUPPLIER.SUPContract_ID = COMPANY.Contract_ID
+                                        JOIN ITEM
+                                            ON SUPPLIER.SUP_VEN_ID = ITEM.SUP_ID
+                                        JOIN CATEGORY
+                                            ON CATEGORY.Cat_ID = ITEM.Cat_ID
+                                        JOIN INV_CAT
+                                            ON INV_CAT.Cat_ID = CATEGORY.Cat_ID
+                                        JOIN INVENTORY
+                                            ON INVENTORY.Inv_ID = INV_CAT.Inv_ID
+                                        WHERE DEAL.Deal_ID = '${id}'
+                                `);
+            if (data1.recordset.length > 0)
+                data1.recordset[0].vendor = "";
+        }
+
+        const data2 = await db.query(`
+                                        SELECT
+                                            ITEM.Item_Name,
+                                            CATEGORY.Cat_Name,
+                                            ITEM_DEAL.Item_Quantity,
+                                            ITEM.Item_Salery
+                                        FROM DEAL
+                                        JOIN ITEM_DEAL
+                                            ON ITEM_DEAL.Deal_ID = DEAL.Deal_ID
+                                        JOIN ITEM
+                                            ON ITEM.Item_ID = ITEM_DEAL.Item_ID
+                                        JOIN CATEGORY
+                                            ON CATEGORY.Cat_ID = ITEM.Cat_ID
+                                        WHERE DEAL.Deal_ID = '${id}'
+                                    `);
+            res.json({
+                general: data1.recordset,
+                items: data2.recordset
+            });
+
+    } catch (err) {
+        return res.status(500).json({ status: "invalid", msg: "Server error" });
+    }
 });
 
 app.listen(port, () => {
