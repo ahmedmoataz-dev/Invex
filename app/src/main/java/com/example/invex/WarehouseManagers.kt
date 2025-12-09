@@ -22,15 +22,12 @@ import androidx.navigation.NavHostController
 
 @Composable
 fun WarehousesManagersScreen(navController: NavHostController) {
-    val warehousesViewModel: WarehousesViewModel = viewModel()
-    val viewModel: WarehousesManagersViewModel = viewModel(
-        factory = object : androidx.lifecycle.ViewModelProvider.Factory {
-            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                @Suppress("UNCHECKED_CAST")
-                return WarehousesManagersViewModel(warehousesViewModel) as T
-            }
-        }
-    )
+    val viewModel: WarehouseManagerViewModel = viewModel()
+    val state by viewModel.state.collectAsState()
+
+    LaunchedEffect(Unit) {
+        viewModel.loadManagers()
+    }
 
     Column(
         modifier = Modifier
@@ -49,14 +46,16 @@ fun WarehousesManagersScreen(navController: NavHostController) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Search Bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(50.dp)
                 .shadow(4.dp, RoundedCornerShape(12.dp))
                 .background(Color.White, RoundedCornerShape(12.dp))
-                .border(BorderStroke(1.dp, Color(0xFF243D64).copy(alpha = 0.2f)), RoundedCornerShape(12.dp))
+                .border(
+                    BorderStroke(1.dp, Color(0xFF243D64).copy(alpha = 0.2f)),
+                    RoundedCornerShape(12.dp)
+                )
                 .padding(horizontal = 16.dp),
             contentAlignment = Alignment.CenterStart
         ) {
@@ -76,31 +75,53 @@ fun WarehousesManagersScreen(navController: NavHostController) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // List of Warehouse Managers
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            items(viewModel.warehouseManagersList) { info ->
-                WarehouseManagerCard(
-                    managerName = info.managerName,
-                    warehouseName = info.warehouseName,
-                    warehouseLocation = info.warehouseLocation
-                )
+        when (state) {
+            is WarehouseManagerState.Loading -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
             }
-            item {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                    contentAlignment = Alignment.CenterEnd
+            is WarehouseManagerState.Error -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = (state as WarehouseManagerState.Error).message,
+                        color = Color.Red,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            is WarehouseManagerState.Success -> {
+                val managers = viewModel.filteredList
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    Button(
-                        onClick = { navController.popBackStack() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF243D64))
-                    ) {
-                        Text("Back", color = Color.White)
+                    items(managers) { manager ->
+                        WarehouseManagerCard(
+                            managerName = manager.name,
+                            warehouseName = manager.warehouse,
+                            warehouseLocation = "${manager.governorate}, ${manager.city}"
+                        )
+                    }
+
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                            contentAlignment = Alignment.CenterEnd
+                        ) {
+                            Button(
+                                onClick = { navController.popBackStack() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF243D64))
+                            ) {
+                                Text("Back", color = Color.White)
+                            }
+                        }
                     }
                 }
             }
+            else -> {}
         }
     }
 }

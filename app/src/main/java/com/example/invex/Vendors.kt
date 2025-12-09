@@ -23,12 +23,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 @Composable
-fun VendorsScreen(navController: NavHostController) {
-    val WViewModel:WarehousesViewModel=viewModel()
-    val viewModel: VendorsViewModel = viewModel()
+fun VendorsScreen(
+    navController: NavHostController,
+    viewModel: VendorViewModel = viewModel(),
+    warehouseViewModel: WarehouseViewModel = viewModel()
+) {
+    val vendorState by viewModel.vendorState.collectAsState()
+    val warehouseState by warehouseViewModel.state.collectAsState()
+    var searchQuery by remember { mutableStateOf("") }
     var showAddDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadVendors()
+        warehouseViewModel.loadWarehouses()
+    }
+
+    val warehouses = (warehouseState as? WarehouseState.Success)?.data ?: emptyList()
 
     Column(
         modifier = Modifier
@@ -37,7 +52,6 @@ fun VendorsScreen(navController: NavHostController) {
             .padding(20.dp)
     ) {
 
-        // Screen Title
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -47,25 +61,24 @@ fun VendorsScreen(navController: NavHostController) {
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF243D64),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f)
             )
 
             IconButton(
                 onClick = { showAddDialog = true },
-                modifier = Modifier.size(60.dp)
+                modifier = Modifier.size(70.dp)
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_add),
                     contentDescription = "Add Vendor",
                     tint = Color(0xFF243D64),
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(50.dp)
                 )
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Search Bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -80,12 +93,12 @@ fun VendorsScreen(navController: NavHostController) {
             contentAlignment = Alignment.CenterStart
         ) {
             BasicTextField(
-                value = viewModel.searchQuery.value,
-                onValueChange = { viewModel.updateSearchQuery(it) },
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 decorationBox = { innerField ->
-                    if (viewModel.searchQuery.value.isEmpty())
+                    if (searchQuery.isEmpty())
                         Text("Search Vendors...", color = Color(0xFF6C7A89))
                     innerField()
                 }
@@ -94,51 +107,95 @@ fun VendorsScreen(navController: NavHostController) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Vendors List
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            items(viewModel.filteredList) { vendor ->
-                VendorCard(vendor)
+        when (vendorState) {
+            is VendorState.Loading -> Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
             }
-            item {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                    contentAlignment = Alignment.CenterEnd
+            is VendorState.Success -> {
+                val vendors = (vendorState as VendorState.Success).data.filter {
+                    it.name.contains(searchQuery, ignoreCase = true) ||
+                            it.warehouse.contains(searchQuery, ignoreCase = true) ||
+                            it.type.contains(searchQuery, ignoreCase = true)
+                }
+
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxSize()
                 ) {
-                    Button(
-                        onClick = { navController.popBackStack() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF243D64))
-                    ) {
-                        Text("Back", color = Color.White)
+                    items(vendors) { vendor ->
+                        VendorCard(vendor)
+                    }
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                            contentAlignment = Alignment.CenterEnd
+                        ) {
+                            Button(
+                                onClick = { navController.popBackStack() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF243D64))
+                            ) {
+                                Text("Back", color = Color.White)
+                            }
+                        }
                     }
                 }
             }
+            is VendorState.Error -> Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = (vendorState as VendorState.Error).message,
+                    color = Color.Red,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            else -> {}
         }
     }
 
     if (showAddDialog) {
         AddVendorDialog(
-             viewModel,
-            WViewModel,
-             { showAddDialog = false }
+            viewModel = viewModel,
+            warehouses = warehouses,
+            onDismiss = { showAddDialog = false }
         )
     }
 }
 
 @Composable
+fun VendorCard(vendor: GetVendor) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFF243D64).copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+            .background(Color.White, RoundedCornerShape(12.dp))
+            .padding(16.dp)
+    ) {
+        Text(text = vendor.type, fontWeight = FontWeight.Bold, color = Color(0xFF243D64))
+        Text(text = vendor.name, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF243D64))
+        Text(text = vendor.warehouse, fontWeight = FontWeight.Medium, color = Color(0xFF6C7A89))
+    }
+}
+
+@Composable
 fun AddVendorDialog(
-    vendorsViewModel: VendorsViewModel,
-    warehousesViewModel: WarehousesViewModel,
+    viewModel: VendorViewModel,
+    warehouses: List<WarehouseVen>,
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf("") }
+    var selectedWarehouse by remember { mutableStateOf<WarehouseVen?>(null) }
+    var type by remember { mutableStateOf("Import Vendor") }
     var expanded by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
 
-    val warehousesNames = warehousesViewModel.warehousesList.map { it.name }
-    val selectedWarehouse = vendorsViewModel.selectedWarehouse
+    val isDataLoaded = warehouses.isNotEmpty()
 
     Box(
         modifier = Modifier
@@ -147,151 +204,100 @@ fun AddVendorDialog(
             .pointerInput(Unit) {},
         contentAlignment = Alignment.Center
     ) {
-
         Column(
             modifier = Modifier
-                .width(380.dp)
+                .width(400.dp)
                 .shadow(8.dp, RoundedCornerShape(16.dp))
                 .background(Color.White, RoundedCornerShape(16.dp))
                 .padding(24.dp)
         ) {
-
-            Text(
-                text = "Add New Vendor",
-                fontWeight = FontWeight.Bold,
-                fontSize = 22.sp,
-                color = Color(0xFF243D64)
-            )
-
+            Text("Add Vendor", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Color(0xFF243D64))
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Name input
             VendorInputField("Vendor Name", name) { name = it }
+            Spacer(modifier = Modifier.height(8.dp))
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Text("Warehouse", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFF243D64))
+            Spacer(modifier = Modifier.height(4.dp))
 
-            // ---------------------
-            //   WAREHOUSE DROPDOWN
-            // ---------------------
-            Text(
-                text = "Select Warehouse",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF243D64)
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFF0F0F0))
+                    .clickable { if (isDataLoaded) expanded = true }
+                    .padding(horizontal = 12.dp, vertical = 14.dp)
+            ) {
+                Text(
+                    text = selectedWarehouse?.name ?: if (isDataLoaded) "Select Warehouse" else "Loading...",
+                    color = if (selectedWarehouse == null) Color.Gray else Color.Black
+                )
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Box {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .border(1.dp, Color(0xFF243D64), RoundedCornerShape(10.dp))
-                        .clickable{ expanded = true }
-                        .padding(14.dp)
-                ) {
-                    Text(
-                        text = selectedWarehouse ?: "Select Warehouse",
-                        color = if (selectedWarehouse == null) Color.Gray else Color(0xFF243D64),
-                        fontSize = 16.sp
-                    )
-                }
-
-                DropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    warehousesNames.forEach { warehouseName ->
-                        DropdownMenuItem(
-                            text = { Text(warehouseName) },
-                            onClick = {
-                                vendorsViewModel.updateSelectedWarehouse(warehouseName)
-                                expanded = false
-                            }
-                        )
+                if (isDataLoaded) {
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        warehouses.forEach { warehouse ->
+                            DropdownMenuItem(
+                                text = { Text(warehouse.name) },
+                                onClick = {
+                                    selectedWarehouse = warehouse
+                                    expanded = false
+                                }
+                            )
+                        }
                     }
                 }
             }
 
-            if (errorMessage.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(errorMessage, color = Color.Red, fontSize = 14.sp)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row {
+                listOf("Import Vendor", "Export Vendor").forEach { option ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 16.dp)) {
+                        RadioButton(
+                            selected = type == option,
+                            onClick = { type = option },
+                            colors = RadioButtonDefaults.colors(selectedColor = Color(0xFF243D64), unselectedColor = Color.Gray)
+                        )
+                        Text(option, fontWeight = FontWeight.Medium)
+                    }
+                }
             }
 
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(onClick = { onDismiss() }) {
-                    Text("Cancel", color = Color(0xFF6C7A89))
-                }
+            if (errorMessage.isNotEmpty()) Text(errorMessage, color = Color.Red)
 
-                Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { onDismiss() }) { Text("Cancel", color = Color(0xFF6C7A89)) }
+                Spacer(modifier = Modifier.width(16.dp))
                 Button(
                     onClick = {
-                        val warehouse = vendorsViewModel.selectedWarehouse
-                        if (name.isBlank()) {
-                            errorMessage = "Please enter vendor name!"
-                        } else if (vendorsViewModel.selectedWarehouse == null) {
-                            errorMessage = "Please select a warehouse!"
+                        if (name.isBlank() || selectedWarehouse == null) {
+                            errorMessage = "Please fill all fields!"
                         } else {
-                            vendorsViewModel.addVendor(
-                                Vendor(
-                                    id = (vendorsViewModel.vendorsList.size + 1).toString(),
-                                    name = name,
-                                    warehouse = warehouse!!
-                                )
+                            viewModel.addVendor(
+                                name, selectedWarehouse!!.name, type,
+                                onSuccess = { onDismiss() },
+                                onError = { msg -> errorMessage = msg }
                             )
-                            onDismiss()
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF243D64))
-                ) {
-                    Text("Add", color = Color.White)
-                }
+                ) { Text("Add", color = Color.White) }
+
             }
         }
     }
 }
 
-
-@Composable
-fun VendorCard(vendor: Vendor) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, Color(0xFF243D64).copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-            .background(Color.White, RoundedCornerShape(12.dp))
-            .padding(16.dp)
-    ) {
-        Text(
-            text = vendor.name,
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
-            color = Color(0xFF243D64)
-        )
-        Text(text = vendor.warehouse, fontWeight = FontWeight.Medium, color = Color(0xFF6C7A89))
-
-    }
-}
-
 @Composable
 fun VendorInputField(label: String, value: String, onValueChange: (String) -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-
-        Text(
-            text = label,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color(0xFF243D64)
-        )
-
+    Column {
+        Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFF243D64))
         Spacer(modifier = Modifier.height(4.dp))
-
         BasicTextField(
             value = value,
             onValueChange = onValueChange,

@@ -4,72 +4,185 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.navigation.NavController
+import androidx.navigation.NavHostController
+import com.google.gson.Gson
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import retrofit2.Response
 
-/***********************************
- *            LOGIN VIEWMODEL
- ***********************************/
+
+sealed class LoginState {
+    object Idle : LoginState()
+    object Loading : LoginState()
+    data class Success(val data: LoginResponse?) : LoginState()
+    data class Error(val message: String) : LoginState()
+}
+
 class LoginViewModel : ViewModel() {
+
     var email = mutableStateOf("")
     var password = mutableStateOf("")
     var passwordVisible = mutableStateOf(false)
+
+    var loginErrorMessage = mutableStateOf<String?>(null)
+
+    private val repo = AuthRepository()
+
+    private val _loginState = MutableStateFlow<LoginState>(LoginState.Idle)
+    val loginState: StateFlow<LoginState> = _loginState
 
     fun togglePasswordVisibility() {
         passwordVisible.value = !passwordVisible.value
     }
 
-    fun login() {
-        // TODO: Implement login logic later
+    fun login(navController: NavController) {
+        loginErrorMessage.value = null
+
+        if (!validateLogin()) return
+
+        _loginState.value = LoginState.Loading
+
+        viewModelScope.launch {
+            try {
+                val response = repo.login(LoginRequest(email.value, password.value))
+
+                if (response.isSuccessful) {
+                    loginErrorMessage.value = null
+                    _loginState.value = LoginState.Success(response.body())
+                    navController.navigate("home")
+                } else {
+                    loginErrorMessage.value = "Invalid email or password"
+                    _loginState.value = LoginState.Error("Login failed")
+                }
+
+            } catch (e: Exception) {
+                loginErrorMessage.value = "Network error: ${e.message}"
+                _loginState.value = LoginState.Error(e.message ?: "Error")
+            }
+        }
     }
+    private fun validateLogin(): Boolean {
+        if (email.value.isBlank()) {
+            loginErrorMessage.value = "Email is required"
+            return false
+        }
+
+        if (!email.value.contains("@") || !email.value.contains(".com")) {
+            loginErrorMessage.value = "Enter a valid email"
+            return false
+        }
+
+        if (password.value.isBlank()) {
+            loginErrorMessage.value = "Password is required"
+            return false
+        }
+
+        return true
+    }
+
 }
 
-/***********************************
- *            HOME VIEWMODEL
- ***********************************/
+
 data class Shortcut(val icon: Int, val title: String, val subtitle: String)
-
+sealed class DealState {
+    data object Idle : DealState()
+    data object Loading : DealState()
+    data class Success(val data: List<Deal>) : DealState()
+    data class Error(val message: String) : DealState()
+}
 class HomeViewModel : ViewModel() {
-
     var shortcuts by mutableStateOf(
         listOf(
             Shortcut(R.drawable.van, "vendors", "Explore your vendors"),
-            Shortcut(R.drawable.ic_warehouses, "Warehouses", "Manage your warehouses"),
-            Shortcut(R.drawable.ic_companies, "Companies", "View your companies"),
             Shortcut(R.drawable.ic_managers, "Warehouse Managers", "See warehouse managers")
         )
     )
         private set
+    private val repo = AuthRepository()
+
+    private val _dealState = MutableStateFlow<DealState>(DealState.Idle)
+    val dealState: StateFlow<DealState> = _dealState
+
+    fun loadRecentDeals() {
+        _dealState.value = DealState.Loading
+
+        viewModelScope.launch {
+            try {
+                val recent = repo.getRecentDeals()
+                _dealState.value = DealState.Success(recent)
+
+            } catch (e: Exception) {
+                _dealState.value = DealState.Error(e.message ?: "Error loading deals")
+            }
+        }
+    }
 }
 
-/***********************************
- *       WAREHOUSES LIST VIEWMODEL
- ***********************************/
-data class Warehouse(
-    val name: String,
-    val location: String,
-    val fillPercent: Float,
-    val managerName: String
-)
-class WarehousesViewModel : ViewModel() {
-    var warehousesList by mutableStateOf(
-        listOf(
-            Warehouse("Warehouse A", "Cairo, Downtown", 0.7f, "Ahmed"),
-            Warehouse("Warehouse B", "Alexandria, Smouha", 0.4f, "Sara"),
-            Warehouse("Warehouse C", "Giza, Dokki", 0.9f, "Omar")
-        )
-    )
-        private set
+
+
+sealed class WarehouseStateTotal {
+    object Idle : WarehouseStateTotal()
+    object Loading : WarehouseStateTotal()
+    data class Success(val data: List<Warehouse>) : WarehouseStateTotal()
+    data class Error(val message: String) : WarehouseStateTotal()
+}
+
+class WarehouseViewModelTotal(private val repo: AuthRepository = AuthRepository()) : ViewModel() {
+
+    private val _state = MutableStateFlow<WarehouseStateTotal>(WarehouseStateTotal.Idle)
+    val state: StateFlow<WarehouseStateTotal> = _state
 
     var searchQuery by mutableStateOf("")
-        private set
-
-    var showAddDialog by mutableStateOf(false)
-        private set
-
     var errorMessage by mutableStateOf("")
+    var showAddDialog by mutableStateOf(false)
+    var warehousesList = mutableStateOf(listOf<Warehouse>())
 
+    val filteredList: List<Warehouse>
+        get() = warehousesList.value.filter {
+            it.name.contains(searchQuery, ignoreCase = true) ||
+                    it.manager.contains(searchQuery, ignoreCase = true)
+        }
 
-    fun updateSearchQuery(query: String) {
-        searchQuery = query
+    fun loadWarehouses() {
+        _state.value = WarehouseStateTotal.Loading
+        viewModelScope.launch {
+            try {
+                val warehouses = repo.getWarehouses()
+                warehousesList.value = warehouses
+                _state.value = WarehouseStateTotal.Success(warehouses)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _state.value = WarehouseStateTotal.Error(e.message ?: "Failed to load warehouses")
+            }
+        }
+    }
+
+    fun addWarehouse(
+        name: String,
+        governorate: String,
+        city: String,
+        manager: String,
+        capacity: Int,
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            try {
+                val response = repo.addWarehouse(
+                    AddWarehouseRequest(name, governorate, city, capacity, manager)
+                )
+                if (response.message.contains("success", ignoreCase = true)) {
+                    loadWarehouses()
+                    onSuccess()
+                } else {
+                    errorMessage = response.message
+                }
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Failed to add warehouse"
+            }
+        }
     }
 
     fun openAddDialog() {
@@ -82,135 +195,100 @@ class WarehousesViewModel : ViewModel() {
         errorMessage = ""
     }
 
-    fun addWarehouse(
-        name: String,
-        governorate: String,
-        city: String,
-        capacity: String,
-        managerName: String
-    ) {
-        if (name.isBlank() || governorate.isBlank() || city.isBlank() || capacity.isBlank() || managerName.isBlank()) {
-            errorMessage = "Please fill all fields!"
-            return
-        }
-        val itemsCount = capacity.toIntOrNull() ?: 0
-        val location = "$governorate, $city"
-        val fill = itemsCount.toFloat() / 100f
-        warehousesList = warehousesList + Warehouse(name, location, fill, managerName)
-        closeAddDialog()
-    }
-
-    val filteredList: List<Warehouse>
-        get() = warehousesList.filter {
-            it.name.contains(searchQuery, ignoreCase = true) ||
-                    it.location.contains(searchQuery, ignoreCase = true) ||
-                    it.managerName.contains(searchQuery, ignoreCase = true)
-        }
-}
-
-/***********************************
- *      WAREHOUSE DETAILS VIEWMODEL
- ***********************************/
-data class Product(
-    val name: String,
-    val price: Double,
-    val quantity: Int,
-    val supplier: String
-)
-
-data class Category(
-    val name: String,
-    val products: List<Product>
-)
-
-data class WarehouseDetail(
-    val name: String,
-    val capacity: Int,
-    val fillPercent: Float,
-    val manager: String,
-    val categories: List<Category>
-)
-
-class WarehouseDetailsViewModel : ViewModel() {
-
-    private val _warehouseDetails = mutableStateOf<WarehouseDetail?>(null)
-    val warehouseDetails: State<WarehouseDetail?> = _warehouseDetails
-
-    fun loadWarehouse(name: String) {
-        _warehouseDetails.value = WarehouseDetail(
-            name = name,
-            capacity = 1000,
-            fillPercent = 0.65f,
-            manager = "Ahmed Moataz",
-            categories = listOf(
-                Category(
-                    "Electronics",
-                    listOf(
-                        Product("Laptop", 1200.0, 5, "Dell"),
-                        Product("Mouse", 20.0, 10, "Logitech")
-                    )
-                ),
-                Category(
-                    "Furniture",
-                    listOf(
-                        Product("Chair", 75.0, 20, "Ikea"),
-                        Product("Table", 150.0, 5, "Ikea")
-                    )
-                ),
-                Category(
-                    "Food",
-                    listOf(
-                        Product("Chocolate", 3.5, 100, "Nestle"),
-                        Product("Apple", 1.0, 50, "LocalFarm")
-                    )
-                )
-            )
-        )
-    }
-}
-
-/***********************************
- *      MANAGERS VIEWMODEL
- ***********************************/
-data class Manager(
-    val id: String,
-    val name: String,
-    val email: String,
-    val password: String
-)
-
-class ManagersViewModel : ViewModel() {
-
-    var managersList by mutableStateOf(
-        listOf(
-            Manager("1", "Ahmed", "ahmed@example.com", "1234"),
-            Manager("2", "Sara", "sara@example.com", "abcd"),
-            Manager("3", "Omar", "omar@example.com", "pass")
-        )
-    )
-        private set
-
-    var searchQuery by mutableStateOf("")
-        private set
-
     fun updateSearchQuery(query: String) {
         searchQuery = query
     }
+}
 
-    val filteredList: List<Manager>
-        get() = managersList.filter {
-            it.name.contains(searchQuery, ignoreCase = true) ||
-                    it.email.contains(searchQuery, ignoreCase = true)
+
+sealed class WarehouseDetailsState {
+    object Loading : WarehouseDetailsState()
+    data class Success(val data: WarehouseDetailsResponse) : WarehouseDetailsState()
+    data class Error(val message: String) : WarehouseDetailsState()
+}
+
+class WarehouseDetailsViewModel(private val repo: AuthRepository = AuthRepository()) : ViewModel() {
+
+    private val _state = mutableStateOf<WarehouseDetailsState>(WarehouseDetailsState.Loading)
+    val state: State<WarehouseDetailsState> = _state
+
+    fun loadDetails(name: String) {
+        viewModelScope.launch {
+            _state.value = WarehouseDetailsState.Loading
+            try {
+                val response = repo.getWarehouseDetails(name)
+                _state.value = WarehouseDetailsState.Success(response)
+            } catch (e: Exception) {
+                _state.value = WarehouseDetailsState.Error(e.message ?: "Failed to load warehouse details")
+            }
         }
+    }
 
-    fun addManager(manager: Manager) {
-        managersList = managersList + manager
+}
+
+
+sealed class ManagerState {
+    object Idle : ManagerState()
+    object Loading : ManagerState()
+    data class Success(val data: List<Manager>) : ManagerState()
+    data class Error(val message: String) : ManagerState()
+}
+
+class ManagerViewModel(private val repo: AuthRepository = AuthRepository()) : ViewModel() {
+
+    private val _state = MutableStateFlow<ManagerState>(ManagerState.Idle)
+    val state: StateFlow<ManagerState> = _state
+
+    var searchQuery by mutableStateOf("")
+    var errorMessage by mutableStateOf("")
+    var showAddDialog by mutableStateOf(false)
+
+    fun loadManagers() {
+        _state.value = ManagerState.Loading
+        viewModelScope.launch {
+            try {
+                val managers = repo.getManagers(searchQuery.ifBlank { null })
+                _state.value = ManagerState.Success(managers)
+            } catch (e: Exception) {
+                _state.value = ManagerState.Error(e.message ?: "Failed to load managers")
+            }
+        }
+    }
+
+    fun addManager(name: String, email: String, password: String, onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                val response = repo.addManager(AddManagerRequest(name, email, password))
+                if (response.message.contains("success", ignoreCase = true)) {
+                    loadManagers()
+                    onSuccess()
+                } else {
+                    errorMessage = response.message
+                }
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Failed to add manager"
+            }
+        }
+    }
+
+    fun openAddDialog() {
+        showAddDialog = true
+        errorMessage = ""
+    }
+
+    fun closeAddDialog() {
+        showAddDialog = false
+        errorMessage = ""
+    }
+
+    fun updateSearchQuery(query: String) {
+        searchQuery = query
+        loadManagers()
     }
 }
 
-/***********************************
- *      COMPANIES VIEWMODEL
- ***********************************/
+
+
 data class Company(
     val id: String,
     val name: String,
@@ -330,7 +408,6 @@ class CompaniesViewModel : ViewModel() {
     }
 }
 // Supplier view model
-// Supplier view model
 data class SupplierItem(
     val id: String,
     var name: String,
@@ -356,7 +433,6 @@ class SupplierDetailsViewModel : ViewModel() {
     companion object {
         val suppliersData = mutableMapOf<String, SupplierInfo>()
 
-        // 🔹 ليست ثابتة من الكاتيجوريز
         val predefinedCategories = listOf(
             "Electronics",
             "Food",
@@ -374,8 +450,8 @@ class SupplierDetailsViewModel : ViewModel() {
     var showAddCategoryDialog by mutableStateOf(false)
     var showAddItemDialog by mutableStateOf(false)
 
-    var selectedCategoryName by mutableStateOf<String?>(null)   // ← الجديد
-    var newCategoryName by mutableStateOf("")                  // ← لو اختار Add New Category
+    var selectedCategoryName by mutableStateOf<String?>(null)
+    var newCategoryName by mutableStateOf("")
     var selectedCategoryId by mutableStateOf<String?>(null)
     var newItemName by mutableStateOf("")
     var newItemPrice by mutableStateOf("")
@@ -405,7 +481,6 @@ class SupplierDetailsViewModel : ViewModel() {
         currentSupplierInfo = supplierInfo
     }
 
-    // 🔥 التعديل الوحيد في الفيو مودل
     fun addCategory() {
         val supplierInfo = currentSupplierInfo ?: return
 
@@ -480,50 +555,61 @@ class SupplierDetailsViewModel : ViewModel() {
 }
 
 
+sealed class WarehouseManagerState {
+    object Idle : WarehouseManagerState()
+    object Loading : WarehouseManagerState()
+    data class Success(val data: List<WarehouseManager>) : WarehouseManagerState()
+    data class Error(val message: String) : WarehouseManagerState()
+}
 
-/***********************************
- *      WAREHOUSES MANAGERS VIEWMODEL
- ***********************************/
-data class WarehouseManagerInfo(
-    val managerName: String,
-    val warehouseName: String,
-    val warehouseLocation: String
-)
-
-class WarehousesManagersViewModel(
-    private val warehousesViewModel: WarehousesViewModel
+class WarehouseManagerViewModel(
+    private val repo: AuthRepository = AuthRepository()
 ) : ViewModel() {
 
+    private val _state = MutableStateFlow<WarehouseManagerState>(WarehouseManagerState.Idle)
+    val state: StateFlow<WarehouseManagerState> = _state
+
+    var errorMessage by mutableStateOf("")
     var searchQuery by mutableStateOf("")
         private set
 
-    val warehouseManagersList: List<WarehouseManagerInfo>
-        get() = warehousesViewModel.warehousesList.map { warehouse ->
-            WarehouseManagerInfo(
-                managerName = warehouse.managerName,
-                warehouseName = warehouse.name,
-                warehouseLocation = warehouse.location
-            )
-        }.filter {
-            it.managerName.contains(searchQuery, ignoreCase = true) ||
-                    it.warehouseName.contains(searchQuery, ignoreCase = true) ||
-                    it.warehouseLocation.contains(searchQuery, ignoreCase = true)
+    private var allManagers: List<WarehouseManager> = emptyList()
+
+    val filteredList: List<WarehouseManager>
+        get() = if (searchQuery.isBlank()) allManagers
+        else allManagers.filter {
+            it.name.contains(searchQuery, ignoreCase = true) ||
+                    it.warehouse.contains(searchQuery, ignoreCase = true) ||
+                    it.governorate.contains(searchQuery, ignoreCase = true) ||
+                    it.city.contains(searchQuery, ignoreCase = true)
         }
 
     fun updateSearchQuery(query: String) {
         searchQuery = query
     }
+
+    fun loadManagers() {
+        _state.value = WarehouseManagerState.Loading
+        viewModelScope.launch {
+            try {
+                allManagers = repo.getWarehouseManagers()
+                _state.value = WarehouseManagerState.Success(allManagers)
+            } catch (e: Exception) {
+                _state.value = WarehouseManagerState.Error(e.message ?: "Failed to load managers")
+            }
+        }
+    }
+
 }
-/***********************************
- *      DEALS VIEWMODEL
- ***********************************/
+
+
+
 data class Deal(
-    val type: String, // Import / Export
+    val type: String,
     val company: String,
     val date: String,
     val cost: String
 )
-
 data class DealProduct(
     val category: String,
     val name: String,
@@ -532,7 +618,7 @@ data class DealProduct(
 )
 
 data class DealDetail(
-    val type: String, // Import / Export
+    val type: String,
     val company: String,
     val date: String,
     val warehouseName: String,
@@ -609,177 +695,189 @@ class DealsViewModel : ViewModel() {
     }
 }
 
-/***********************************
- *      DEAL DETAILS VIEWMODEL
- ***********************************/
+
 class DealDetailsViewModel : ViewModel() {
 
     var dealDetail by mutableStateOf<DealDetail?>(null)
         private set
 
-    // Load deal detail based on company name
     fun loadDealDetail(companyName: String, dealsViewModel: DealsViewModel) {
         dealDetail = dealsViewModel.getDealDetail(companyName)
     }
 }
 // جزء ال Vendors
-class VendorsViewModel : ViewModel() {
+sealed class VendorState {
+    object Idle : VendorState()
+    object Loading : VendorState()
+    data class Success(val data: List<GetVendor>) : VendorState()
+    data class Error(val message: String) : VendorState()
+}
 
-    var vendorsList = mutableStateListOf<Vendor>()
-        private set
+class VendorViewModel(private val repo: AuthRepository = AuthRepository()) : ViewModel() {
 
-    var searchQuery = mutableStateOf("")
-        private set
+    private val _vendorState = MutableStateFlow<VendorState>(VendorState.Idle)
+    val vendorState: StateFlow<VendorState> = _vendorState
 
-    // selected warehouse
-    var selectedWarehouse by mutableStateOf<String?>(null)
+    var searchQuery by mutableStateOf("")
+    var errorMessage by mutableStateOf("")
 
-    fun updateSelectedWarehouse(value: String) {
-        selectedWarehouse = value
-    }
-
-    init {
-        vendorsList.addAll(
-            listOf(
-                Vendor(id = "1", name = "Fresh Supplies", warehouse = "Warehouse A"),
-                Vendor(id = "2", name = "Global Traders", warehouse = "Warehouse B"),
-                Vendor(id = "3", name = "Al Arab Distribution", warehouse = "Warehouse C"),
-                Vendor(id = "4", name = "NextGen Imports", warehouse = "Warehouse A"),
-                Vendor(id = "5", name = "Royal Food Co.", warehouse = "Warehouse B")
-            )
-        )
-    }
-
-    // 🔥 FILTER (Search + Warehouse)
-    val filteredList: List<Vendor>
-        get() {
-            val query = searchQuery.value.trim().lowercase()
-            val warehouseFilter = selectedWarehouse
-
-            return vendorsList.filter { vendor ->
-
-                // Search by name OR warehouse
-                val matchesSearch =
-                    vendor.name.lowercase().contains(query) ||
-                            vendor.warehouse.lowercase().contains(query)
-
-                // Filter by selected warehouse (if selected)
-                val matchesWarehouse =
-                    warehouseFilter == null || vendor.warehouse == warehouseFilter
-
-                matchesSearch && matchesWarehouse
+    fun loadVendors() {
+        _vendorState.value = VendorState.Loading
+        viewModelScope.launch {
+            try {
+                val vendors = repo.getVendors()
+                _vendorState.value = VendorState.Success(vendors)
+            } catch (e: Exception) {
+                _vendorState.value = VendorState.Error(e.message ?: "Error loading vendors")
             }
         }
-
-    fun updateSearchQuery(query: String) {
-        searchQuery.value = query
     }
 
-    fun addVendor(vendor: Vendor) {
-        vendorsList.add(vendor)
+    fun addVendor(
+        name: String,
+        warehouse: String,
+        type: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val response = repo.addVendor(AddVendor(name, warehouse, type))
+                if (response.message.contains("success", ignoreCase = true)) {
+                    loadVendors()
+                    onSuccess()
+                } else {
+                    onError(response.message)
+                }
+            } catch (e: Exception) {
+                onError(e.message ?: "Failed to add vendor")
+            }
+        }
+    }
+
+
+}
+
+sealed class WarehouseState {
+    object Idle : WarehouseState()
+    object Loading : WarehouseState()
+    data class Success(val data: List<WarehouseVen>) : WarehouseState()
+    data class Error(val message: String) : WarehouseState()
+}
+
+class WarehouseViewModel(private val repo: AuthRepository = AuthRepository()) : ViewModel() {
+
+    private val _state = MutableStateFlow<WarehouseState>(WarehouseState.Idle)
+    val state: StateFlow<WarehouseState> = _state
+
+    fun loadWarehouses() {
+        _state.value = WarehouseState.Loading
+        viewModelScope.launch {
+            try {
+                val warehouses = repo.getWarehousesNames()
+                _state.value = WarehouseState.Success(warehouses)
+            } catch (e: Exception) {
+                _state.value = WarehouseState.Error(e.message ?: "Failed to load warehouses")
+            }
+        }
     }
 }
 
-data class Vendor(
-    val id: String,
-    val name: String,
-    val warehouse: String
-)
 
-// جزء اددد ديل
-data class AddDealProduct(
-    val category: String,
-    val name: String,
-    val pricePerUnit: Double
-)
-
-data class AddDealWarehouse(
-    val name: String,
-    val categories: List<Pair<String, List<AddDealProduct>>>
-)
-
-class AddDealViewModel(
-    private val companiesViewModel: CompaniesViewModel,
-    private val suppliersViewModel: SupplierDetailsViewModel,
-    private val warehousesViewModel: WarehousesViewModel,
-    private val vendorsViewModel: VendorsViewModel
-) : androidx.lifecycle.ViewModel() {
-
-    var dealType by mutableStateOf("Import")
-    val dealTypeOptions = listOf("Import", "Export")
-
-    var selectedCompany by mutableStateOf<String?>(null)
-    var selectedVendor by mutableStateOf<String?>(null)
-    var selectedWarehouse by mutableStateOf<AddDealWarehouse?>(null)
-
-    private val quantities: SnapshotStateMap<String, Int> = mutableStateMapOf()
-    fun getQuantity(key: String) = quantities[key] ?: 0
-    fun increaseQuantity(key: String) {
-        val q = quantities[key] ?: 0
-        quantities[key] = q + 1
-    }
-    fun decreaseQuantity(key: String) {
-        val q = quantities[key] ?: 0
-        if (q <= 1) quantities.remove(key) else quantities[key] = q - 1
-    }
-
-    // Companies filtered based on deal type
-    val filteredCompanies: List<String>
-        get() = companiesViewModel.companiesList.filter {
-            if (dealType == "Import") it.type == "Supplier" else it.type == "Importer"
-        }.map { it.name }
-
-    // When company is selected, set associated warehouse/vendor and load products
-    fun onCompanySelected(companyName: String) {
-        selectedCompany = companyName
-
-        if (dealType == "Import") {
-            // Supplier → choose warehouse
-            val supplierCompany = companiesViewModel.companiesList.find { it.name == companyName }
-            val warehouseName = supplierCompany?.vendor ?: warehousesViewModel.warehousesList.firstOrNull()?.name
-            selectedWarehouse = warehouseName?.let { getWarehouseByName(it) }
-            selectedVendor = null
-        } else {
-            // Export → show vendor and warehouse
-            val importerCompany = companiesViewModel.companiesList.find { it.name == companyName }
-            val vendorName = importerCompany?.vendor ?: vendorsViewModel.vendorsList.firstOrNull()?.name
-            val warehouseName = warehousesViewModel.warehousesList.firstOrNull()?.name
-            selectedVendor = vendorName
-            selectedWarehouse = warehouseName?.let { getWarehouseByName(it) }
-        }
-
-        quantities.clear()
-    }
-
-    private fun getWarehouseByName(name: String): AddDealWarehouse? {
-        val warehouseDetail = warehousesViewModel.warehousesList.find { it.name == name } ?: return null
-        val categories = listOf(
-            "Electronics" to listOf(
-                AddDealProduct("Electronics","Laptop",1200.0),
-                AddDealProduct("Electronics","Mouse",20.0)
-            ),
-            "Furniture" to listOf(
-                AddDealProduct("Furniture","Chair",75.0),
-                AddDealProduct("Furniture","Table",150.0)
-            ),
-            "Food" to listOf(
-                AddDealProduct("Food","Apple",1.0),
-                AddDealProduct("Food","Chocolate",3.5)
-            )
-        )
-        return AddDealWarehouse(warehouseDetail.name, categories)
-    }
-
-    fun computeTotal(): Double {
-        var total = 0.0
-        selectedWarehouse?.categories?.forEach { (_, products) ->
-            products.forEach { p ->
-                val key = "${p.category}::${p.name}"
-                val qty = quantities[key] ?: 0
-                total += p.pricePerUnit * qty
-            }
-        }
-        return total
-    }
-}
+//// جزء اددد ديل
+//data class AddDealProduct(
+//    val category: String,
+//    val name: String,
+//    val pricePerUnit: Double
+//)
+//
+//data class AddDealWarehouse(
+//    val name: String,
+//    val categories: List<Pair<String, List<AddDealProduct>>>
+//)
+//
+//class AddDealViewModel(
+//    private val companiesViewModel: CompaniesViewModel,
+//    private val suppliersViewModel: SupplierDetailsViewModel,
+//    private val warehousesViewModel: WarehousesViewModel,
+//    private val vendorsViewModel: VendorsViewModel
+//) : androidx.lifecycle.ViewModel() {
+//
+//    var dealType by mutableStateOf("Import")
+//    val dealTypeOptions = listOf("Import", "Export")
+//
+//    var selectedCompany by mutableStateOf<String?>(null)
+//    var selectedVendor by mutableStateOf<String?>(null)
+//    var selectedWarehouse by mutableStateOf<AddDealWarehouse?>(null)
+//
+//    private val quantities: SnapshotStateMap<String, Int> = mutableStateMapOf()
+//    fun getQuantity(key: String) = quantities[key] ?: 0
+//    fun increaseQuantity(key: String) {
+//        val q = quantities[key] ?: 0
+//        quantities[key] = q + 1
+//    }
+//    fun decreaseQuantity(key: String) {
+//        val q = quantities[key] ?: 0
+//        if (q <= 1) quantities.remove(key) else quantities[key] = q - 1
+//    }
+//
+//    // Companies filtered based on deal type
+//    val filteredCompanies: List<String>
+//        get() = companiesViewModel.companiesList.filter {
+//            if (dealType == "Import") it.type == "Supplier" else it.type == "Importer"
+//        }.map { it.name }
+//
+//    // When company is selected, set associated warehouse/vendor and load products
+//    fun onCompanySelected(companyName: String) {
+//        selectedCompany = companyName
+//
+//        if (dealType == "Import") {
+//            // Supplier → choose warehouse
+//            val supplierCompany = companiesViewModel.companiesList.find { it.name == companyName }
+//            val warehouseName = supplierCompany?.vendor ?: warehousesViewModel.warehousesList.firstOrNull()?.name
+//            selectedWarehouse = warehouseName?.let { getWarehouseByName(it) }
+//            selectedVendor = null
+//        } else {
+//            // Export → show vendor and warehouse
+//            val importerCompany = companiesViewModel.companiesList.find { it.name == companyName }
+//            val vendorName = importerCompany?.vendor ?: vendorsViewModel.vendorsList.firstOrNull()?.name
+//            val warehouseName = warehousesViewModel.warehousesList.firstOrNull()?.name
+//            selectedVendor = vendorName
+//            selectedWarehouse = warehouseName?.let { getWarehouseByName(it) }
+//        }
+//
+//        quantities.clear()
+//    }
+//
+//    private fun getWarehouseByName(name: String): AddDealWarehouse? {
+//        val warehouseDetail = warehousesViewModel.warehousesList.find { it.name == name } ?: return null
+//        val categories = listOf(
+//            "Electronics" to listOf(
+//                AddDealProduct("Electronics","Laptop",1200.0),
+//                AddDealProduct("Electronics","Mouse",20.0)
+//            ),
+//            "Furniture" to listOf(
+//                AddDealProduct("Furniture","Chair",75.0),
+//                AddDealProduct("Furniture","Table",150.0)
+//            ),
+//            "Food" to listOf(
+//                AddDealProduct("Food","Apple",1.0),
+//                AddDealProduct("Food","Chocolate",3.5)
+//            )
+//        )
+//        return AddDealWarehouse(warehouseDetail.name, categories)
+//    }
+//
+//    fun computeTotal(): Double {
+//        var total = 0.0
+//        selectedWarehouse?.categories?.forEach { (_, products) ->
+//            products.forEach { p ->
+//                val key = "${p.category}::${p.name}"
+//                val qty = quantities[key] ?: 0
+//                total += p.pricePerUnit * qty
+//            }
+//        }
+//        return total
+//    }
+//}
 

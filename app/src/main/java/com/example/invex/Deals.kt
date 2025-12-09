@@ -60,7 +60,6 @@ fun DealsScreen(navController: NavHostController) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Search bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()

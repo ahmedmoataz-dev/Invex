@@ -46,7 +46,7 @@ fun InvexApp() {
 
         NavHost(
             navController = navController,
-            startDestination = "login",
+            startDestination = "Onboarding",
             modifier = Modifier.padding(paddingValues)
         ) {
             composable("Onboarding") { OnboardingScreen(navController) }

@@ -24,11 +24,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 @Composable
 fun ManagersScreen(navController: NavHostController) {
-    val viewModel: ManagersViewModel = viewModel()
-    var showAddDialog by remember { mutableStateOf(false) }
+    val viewModel: ManagerViewModel = viewModel()
+    val scope = rememberCoroutineScope()
+    var managersList by remember { mutableStateOf(listOf<Manager>()) }
+
+    LaunchedEffect(Unit) {
+        scope.launch {
+            viewModel.state.collectLatest { state ->
+                when (state) {
+                    is ManagerState.Success -> managersList = state.data
+                    is ManagerState.Error -> viewModel.errorMessage = state.message
+                    else -> {}
+                }
+            }
+        }
+        viewModel.loadManagers()
+    }
 
     Column(
         modifier = Modifier
@@ -50,7 +66,7 @@ fun ManagersScreen(navController: NavHostController) {
             )
 
             IconButton(
-                onClick = { showAddDialog = true },
+                onClick = { viewModel.showAddDialog = true },
                 modifier = Modifier.size(60.dp)
             ) {
                 Icon(
@@ -76,12 +92,15 @@ fun ManagersScreen(navController: NavHostController) {
         ) {
             BasicTextField(
                 value = viewModel.searchQuery,
-                onValueChange = { viewModel.updateSearchQuery(it) },
+                onValueChange = {
+                    viewModel.searchQuery = it
+                    viewModel.loadManagers()
+                },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 decorationBox = { innerTextField ->
                     if (viewModel.searchQuery.isEmpty())
-                        Text("Search Warehouses...", color = Color(0xFF6C7A89))
+                        Text("Search Managers...", color = Color(0xFF6C7A89))
                     innerTextField()
                 }
             )
@@ -93,26 +112,25 @@ fun ManagersScreen(navController: NavHostController) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            items(viewModel.filteredList) { manager ->
+            items(managersList.filter {
+                it.name.contains(viewModel.searchQuery, ignoreCase = true) ||
+                        it.email.contains(viewModel.searchQuery, ignoreCase = true)
+            }) { manager ->
                 ManagerCard(manager)
             }
         }
     }
 
-    if (showAddDialog) {
-        AddManagerDialog(
-            viewModel = viewModel,
-            onDismiss = { showAddDialog = false }
-        )
+    if (viewModel.showAddDialog) {
+        AddManagerDialog(viewModel)
     }
 }
-@Composable
-fun AddManagerDialog(viewModel: ManagersViewModel, onDismiss: () -> Unit) {
 
+@Composable
+fun AddManagerDialog(viewModel: ManagerViewModel) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf("") }
 
     Box(
         modifier = Modifier
@@ -137,16 +155,15 @@ fun AddManagerDialog(viewModel: ManagersViewModel, onDismiss: () -> Unit) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Input Fields
-            ManagerInputField("Name", name,{ name = it })
+            ManagerInputField("Name", name) { name = it }
             Spacer(modifier = Modifier.height(8.dp))
-            ManagerInputField("Email", email,{ email = it })
+            ManagerInputField("Email", email) { email = it }
             Spacer(modifier = Modifier.height(8.dp))
-            ManagerInputField("Password", password,{ password = it })
+            ManagerInputField("Password", password) { password = it }
 
-            if (errorMessage.isNotEmpty()) {
+            if (viewModel.errorMessage.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(errorMessage, color = Color.Red, fontSize = 14.sp)
+                Text(viewModel.errorMessage, color = Color.Red, fontSize = 14.sp)
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -155,7 +172,7 @@ fun AddManagerDialog(viewModel: ManagersViewModel, onDismiss: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
             ) {
-                TextButton(onClick = { onDismiss() }) {
+                TextButton(onClick = { viewModel.showAddDialog = false }) {
                     Text("Cancel", color = Color(0xFF6C7A89))
                 }
 
@@ -164,16 +181,11 @@ fun AddManagerDialog(viewModel: ManagersViewModel, onDismiss: () -> Unit) {
                 Button(
                     onClick = {
                         if (name.isBlank() || email.isBlank() || password.isBlank()) {
-                            errorMessage = "Please fill all fields!"
+                            viewModel.errorMessage = "Please fill all fields!"
                         } else {
-                            val newManager = Manager(
-                                id = (viewModel.managersList.size + 1).toString(),
-                                name = name,
-                                email = email,
-                                password = password
-                            )
-                            viewModel.addManager(newManager)
-                            onDismiss()
+                            viewModel.addManager(name, email, password) {
+                                viewModel.showAddDialog = false
+                            }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF243D64))
@@ -203,23 +215,15 @@ fun ManagerCard(manager: Manager) {
 fun ManagerInputField(
     label: String,
     value: String,
-    onValueChange: (String) -> Unit,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    modifier: Modifier = Modifier
+    onValueChange: (String) -> Unit
 ) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = label,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color(0xFF243D64)
-        )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color(0xFF243D64))
         Spacer(modifier = Modifier.height(4.dp))
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)

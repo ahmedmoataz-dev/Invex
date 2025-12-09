@@ -171,7 +171,6 @@ fun AddCategoryDialog(viewModel: SupplierDetailsViewModel) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ------------------------- Dropdown -------------------------
             Text(
                 text = "Select Category",
                 fontSize = 14.sp,
@@ -209,7 +208,6 @@ fun AddCategoryDialog(viewModel: SupplierDetailsViewModel) {
                 }
             }
 
-            // -------------------- Input لو اختار Add New --------------------
 
             if (viewModel.selectedCategoryName == "Add New Category") {
                 Spacer(modifier = Modifier.height(12.dp))
@@ -221,7 +219,6 @@ fun AddCategoryDialog(viewModel: SupplierDetailsViewModel) {
                 )
             }
 
-            // ------------------------- Errors --------------------------
 
             if (viewModel.categoryError.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -230,7 +227,6 @@ fun AddCategoryDialog(viewModel: SupplierDetailsViewModel) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // -------------------- Buttons --------------------
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

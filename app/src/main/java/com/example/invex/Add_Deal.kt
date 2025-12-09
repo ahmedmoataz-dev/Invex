@@ -46,7 +46,6 @@ fun AddDealScreen(navController: NavController) {
 
         Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
 
-            // Title + Back
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Add New Deal", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color(0xFF243D64))
                 Button(onClick = { navController.popBackStack() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF243D64))) {
@@ -56,7 +55,6 @@ fun AddDealScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Deal Type
             Text("Type:", fontSize = 18.sp, color = Color(0xFF243D64))
             Row {
                 listOf("Import","Export").forEach { type ->
@@ -74,7 +72,6 @@ fun AddDealScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Company Dropdown
             var expandedCompany by remember { mutableStateOf(false) }
             Text("Select Company", fontSize=16.sp,color=Color(0xFF243D64))
             Box(modifier = Modifier.fillMaxWidth().border(1.dp, Color(0xFF243D64).copy(alpha=0.3f), RoundedCornerShape(8.dp)).padding(8.dp)) {
@@ -86,7 +83,6 @@ fun AddDealScreen(navController: NavController) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Import Warehouse
             if (dealType=="Import" && selectedCompany!=null) {
                 var expandedWarehouse by remember { mutableStateOf(false) }
                 Text("Select Warehouse", fontSize=16.sp,color=Color(0xFF243D64))
@@ -99,7 +95,6 @@ fun AddDealScreen(navController: NavController) {
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Export Vendor + Warehouse
             if (dealType=="Export" && selectedCompany!=null) {
                 selectedVendor = vendors.firstOrNull()
                 selectedWarehouse = warehouses.firstOrNull()
@@ -108,7 +103,6 @@ fun AddDealScreen(navController: NavController) {
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Products LazyColumn scrollable
             if (selectedCompany!=null) {
                 Text("Products:", fontSize=18.sp,fontWeight=FontWeight.Bold,color=Color(0xFF243D64))
                 LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
@@ -127,7 +121,6 @@ fun AddDealScreen(navController: NavController) {
             }
         }
 
-        // Bottom Fixed Total + Confirm
         Column(modifier = Modifier
             .fillMaxWidth()
             .align(Alignment.BottomCenter)

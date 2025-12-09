@@ -41,7 +41,6 @@ fun DealDetailsScreen(
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         deal?.let { d ->
-            // Header
             Text(
                 text = "Deal Details",
                 fontSize = 28.sp,
@@ -53,7 +52,6 @@ fun DealDetailsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Main Card
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -81,7 +79,6 @@ fun DealDetailsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Products Section
             Text(
                 text = "Products",
                 fontSize = 22.sp,
@@ -101,7 +98,6 @@ fun DealDetailsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Total Price
             val totalPrice = d.products.sumOf { product ->
                 val price = product.pricePerUnit.replace("$", "").toDoubleOrNull() ?: 0.0
                 price * product.quantity

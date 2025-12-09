@@ -6,7 +6,7 @@ const {validationResult} = require("express-validator");
 
 async function checkPassword(password, hashed){
     const result = await bcrypt.compare(password, hashed);
-    return result;
+    return result; // Checking result
 };
 
 const authen = async (req, res) => {

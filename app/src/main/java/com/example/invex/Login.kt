@@ -7,7 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,6 +22,8 @@ import androidx.navigation.NavController
 @Composable
 fun LoginScreen(navController: NavController) {
     val viewModel: LoginViewModel = viewModel()
+    val state by viewModel.loginState.collectAsState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -47,7 +49,10 @@ fun LoginScreen(navController: NavController) {
 
         OutlinedTextField(
             value = viewModel.email.value,
-            onValueChange = { viewModel.email.value = it },
+            onValueChange = {
+                viewModel.email.value = it
+                viewModel.loginErrorMessage.value = null
+            },
             label = { Text("Email") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
@@ -61,7 +66,10 @@ fun LoginScreen(navController: NavController) {
 
         OutlinedTextField(
             value = viewModel.password.value,
-            onValueChange = { viewModel.password.value = it },
+            onValueChange = {
+                viewModel.password.value = it
+                viewModel.loginErrorMessage.value = null
+            },
             label = { Text("Password") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
@@ -81,13 +89,21 @@ fun LoginScreen(navController: NavController) {
             )
         )
 
+        if (viewModel.loginErrorMessage.value != null) {
+            Text(
+                text = viewModel.loginErrorMessage.value!!,
+                color = Color.Red,
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 4.dp, top = 4.dp)
+            )
+        }
+
         Spacer(modifier = Modifier.height(32.dp))
 
         Button(
-            onClick = {
-                viewModel.login()
-                navController.navigate("home")
-            },
+            onClick = { viewModel.login(navController) },
             modifier = Modifier
                 .height(55.dp)
                 .fillMaxWidth(),
@@ -95,9 +111,19 @@ fun LoginScreen(navController: NavController) {
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF243D64),
                 contentColor = MaterialTheme.colorScheme.onPrimary
-            )
+            ),
+            enabled = state !is LoginState.Loading
         ) {
-            Text(text = "Login", fontSize = 18.sp)
+            if (state is LoginState.Loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = Color.White,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Text(text = "Login", fontSize = 18.sp)
+            }
         }
     }
 }
+

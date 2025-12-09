@@ -9,27 +9,32 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+
 @Composable
 fun WarehousesScreen(
     navController: NavHostController,
-    viewModel: WarehousesViewModel = viewModel()
+    viewModel: WarehouseViewModelTotal = viewModel()
 ) {
+    LaunchedEffect(Unit) {
+        viewModel.loadWarehouses()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -93,19 +98,19 @@ fun WarehousesScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             items(viewModel.filteredList) { warehouse ->
-                WarehouseCard(warehouse = warehouse, onClick = {
+                WarehouseCard(warehouse = warehouse) {
                     navController.navigate("warehouseDetails/${warehouse.name}")
-                })
+                }
             }
         }
     }
-// ده الديالووووج
+
     if (viewModel.showAddDialog) {
         var name by remember { mutableStateOf("") }
         var governorate by remember { mutableStateOf("") }
         var city by remember { mutableStateOf("") }
         var capacity by remember { mutableStateOf("") }
-        var managerName by remember { mutableStateOf("") }
+        var manager by remember { mutableStateOf("") }
 
         Box(
             modifier = Modifier
@@ -129,6 +134,7 @@ fun WarehousesScreen(
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
+
                 InputField("Warehouse Name", name, { name = it })
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -138,7 +144,7 @@ fun WarehousesScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 InputField("Capacity (items)", capacity, { capacity = it }, keyboardType = KeyboardType.Number)
                 Spacer(modifier = Modifier.height(8.dp))
-                InputField("Manager Name", managerName, { managerName = it })
+                InputField("Manager Name", manager, { manager = it })
 
                 if (viewModel.errorMessage.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -153,11 +159,12 @@ fun WarehousesScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Button(
                         onClick = {
-                            if (name.isBlank() || governorate.isBlank() || city.isBlank() || capacity.isBlank() || managerName.isBlank()) {
+                            if (name.isBlank() || governorate.isBlank() || city.isBlank() || capacity.isBlank() || manager.isBlank()) {
                                 viewModel.errorMessage = "Please fill all fields!"
                             } else {
-                                viewModel.addWarehouse(name, governorate, city, capacity, managerName)
-                                viewModel.closeAddDialog()
+                                viewModel.addWarehouse(name, governorate, city, manager, capacity.toInt()) {
+                                    viewModel.closeAddDialog()
+                                }
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF243D64))
@@ -198,6 +205,10 @@ fun InputField(
 
 @Composable
 fun WarehouseCard(warehouse: Warehouse, onClick: () -> Unit) {
+    val fillPercent = if (warehouse.capacity > 0) {
+        warehouse.itemsCount.toFloat() / warehouse.capacity
+    } else 0f
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -209,12 +220,12 @@ fun WarehouseCard(warehouse: Warehouse, onClick: () -> Unit) {
     ) {
         Text(warehouse.name, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF243D64))
         Spacer(modifier = Modifier.height(4.dp))
-        Text(warehouse.location, fontSize = 14.sp, color = Color(0xFF6C7A89))
+        Text("${warehouse.governorate}, ${warehouse.city}", fontSize = 14.sp, color = Color(0xFF6C7A89))
         Spacer(modifier = Modifier.height(4.dp))
-        Text("Manager: ${warehouse.managerName}", fontWeight = FontWeight.Medium, fontSize = 14.sp, color = Color(0xFF243D64))
+        Text("Manager: ${warehouse.manager}", fontWeight = FontWeight.Medium, fontSize = 14.sp, color = Color(0xFF243D64))
         Spacer(modifier = Modifier.height(12.dp))
         LinearProgressIndicator(
-            progress = warehouse.fillPercent,
+            progress = fillPercent.coerceIn(0f, 1f),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(8.dp)
@@ -222,5 +233,7 @@ fun WarehouseCard(warehouse: Warehouse, onClick: () -> Unit) {
             color = Color(0xFF243D64),
             trackColor = Color(0xFFB0C4DE).copy(alpha = 0.4f)
         )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text("${warehouse.itemsCount}/${warehouse.capacity} items", fontSize = 12.sp, color = Color(0xFF6C7A89))
     }
 }
