@@ -4,7 +4,7 @@ const {body} = require("express-validator");
 
 const router = express.Router();
 
-const controllers = require('../controllers/invex_controller');
+const controllers = require('../controllers/invex_controller'); //controllers
 
 router.post('/api/login/', [
     body('email')
