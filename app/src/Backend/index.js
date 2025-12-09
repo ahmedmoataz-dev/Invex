@@ -13,11 +13,11 @@ const port = 8080;
 
 const invexRouters = require('./routers/invex_routers');
 
-app.use('/', invexRouters);
+app.use('/', invexRouters); // Middleware for routes
 
 let config = require('./config/db_config');
 
-db.connect(config);
+db.connect(config); 
 
 
 
